@@ -116,7 +116,7 @@ test('serves only approved self-hosted font assets with the correct type', async
   });
 });
 
-test('launch accepts only empty input, uses the India date, and rejects duplicates', async () => {
+test('launch accepts only empty input, uses the India date, and runs again on request', async () => {
   await withServer(async ({ baseUrl, store }) => {
     const first = await fetch(`${baseUrl}/api/jobs/linkedin-draft`, { method: 'POST' });
     const accepted = await first.json();
@@ -125,11 +125,16 @@ test('launch accepts only empty input, uses the India date, and rejects duplicat
     await waitForRun(store, accepted.runId, (run) => run?.state === 'succeeded');
     assert.equal(store.getSnapshot().runs.find((run) => run.runId === accepted.runId).date, localDate());
 
-    const duplicate = await fetch(`${baseUrl}/api/jobs/linkedin-draft`, {
+    // Run now again the same day starts the same run over, keeping one run per day.
+    const again = await fetch(`${baseUrl}/api/jobs/linkedin-draft`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
     });
-    assert.equal(duplicate.status, 409);
-    assert.equal((await duplicate.json()).error.code, 'DUPLICATE_RUN');
+    assert.equal(again.status, 202);
+    assert.equal((await again.json()).runId, accepted.runId);
+    const whileQueued = await fetch(`${baseUrl}/api/jobs/linkedin-draft`, { method: 'POST' });
+    if (whileQueued.status === 409) assert.equal((await whileQueued.json()).error.code, 'DUPLICATE_RUN');
+    const rerun = await waitForRun(store, accepted.runId, (run) => run?.state === 'succeeded' && run.attempts >= 2);
+    assert.ok(rerun.attempts >= 2);
 
     const forgedDate = await fetch(`${baseUrl}/api/jobs/linkedin-draft`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"date":"2000-01-01"}',

@@ -155,12 +155,14 @@ export function createQueue({ store, jobs, retryDelayMs = 1_000, onSettled = nul
     return created.run;
   }
 
-  // Queues a failed run again as its next attempt.
-  function retry(runId) {
-    const run = store.retryRun(runId);
-    if (typeof jobs[run.jobId]?.run !== 'function') throw new RangeError(`No handler is registered for ${run.jobId}.`);
+  // Queues a failed run again as its next attempt. `anyFinished` is Run now on a day the
+  // automation already ran: the same run starts again, whatever its result was.
+  function retry(runId, { anyFinished = false } = {}) {
+    const known = store.getSnapshot().runs.find((item) => item.runId === runId);
+    if (known && typeof jobs[known.jobId]?.run !== 'function') throw new RangeError(`No handler is registered for ${known.jobId}.`);
+    const run = store.retryRun(runId, { anyFinished });
     pending.push(run);
-    store.addEvent({ runId: run.runId, jobId: run.jobId, state: 'queued', summary: `Trying again (attempt ${run.attempts}).` });
+    store.addEvent({ runId: run.runId, jobId: run.jobId, state: 'queued', summary: anyFinished ? `Running again (run ${run.attempts} today).` : `Trying again (attempt ${run.attempts}).` });
     schedulePump();
     return run;
   }

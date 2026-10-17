@@ -147,6 +147,11 @@ test('the store counts attempts and only retries failed runs', async () => {
       assert.equal(store.retryRun('r1').attempts, 2);
       assert.equal(store.findRun('job', '2026-10-19').state, 'queued');
       assert.equal(store.findRun('job', '2026-10-20'), null);
+      // Run now on a day that already succeeded starts the same run again; a queued run can't.
+      assert.throws(() => store.retryRun('r1', { anyFinished: true }), /not a finished run/);
+      store.setRunState('r1', 'succeeded', 'done');
+      assert.throws(() => store.retryRun('r1'), /not a failed run/);
+      assert.equal(store.retryRun('r1', { anyFinished: true }).attempts, 3);
     } finally { store.close(); }
   });
 });

@@ -319,8 +319,9 @@ function renderDetail() {
   const today = allRuns().some((run) => run.jobId === automation.id && run.date === dateInZone());
   const runButton = $('#run-button');
   const needsSetup = (automation.setupNeeded ?? []).length > 0;
-  runButton.disabled = Boolean(actionInFlight) || today || needsSetup;
-  runButton.textContent = active ? 'Running…' : needsSetup ? 'Needs setup' : today ? 'Already ran today' : actionInFlight === 'launch' ? 'Starting…' : 'Run now';
+  const waiting = snapshot.queuedRuns.some((run) => run.jobId === automation.id);
+  runButton.disabled = Boolean(actionInFlight) || Boolean(active) || waiting || needsSetup;
+  runButton.textContent = active ? 'Running…' : waiting ? 'Waiting…' : needsSetup ? 'Needs setup' : actionInFlight === 'launch' ? 'Starting…' : today ? 'Run again' : 'Run now';
   $('#stop-button').disabled = !active || Boolean(actionInFlight);
   const queued = snapshot.queuedRuns.find((run) => run.jobId === automation.id);
   const retry = (snapshot.retries ?? []).find((item) => item.jobId === automation.id);
@@ -663,7 +664,7 @@ async function runAction(name, endpoint) {
     announce(name === 'launch' ? 'Run queued.' : name === 'pause' ? (snapshot.paused ? 'Resumed.' : 'Paused.') : 'Stop requested.');
     await refresh();
   } catch (error) {
-    if (error.code === 'DUPLICATE_RUN') { announce('This automation already ran today.'); await refresh(); }
+    if (error.code === 'DUPLICATE_RUN') { announce('This automation is already running.'); await refresh(); }
     else if (error.status === 409 && name === 'stop') { announce('That run has already finished.'); await refresh(); }
     else showError($('#action-alert'), error.message || 'That didn’t work. Try again.');
   } finally { actionInFlight = ''; render(); }

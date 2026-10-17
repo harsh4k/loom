@@ -183,13 +183,15 @@ export function openStore(dbPath) {
     },
 
     // Puts a failed run back in the queue as its next attempt. The run keeps its id and date,
-    // so the one-run-per-day rule still holds.
-    retryRun(runId) {
+    // so the one-run-per-day rule still holds. `anyFinished` also allows a run that succeeded or
+    // was stopped (Run now on a day the automation already ran).
+    retryRun(runId, { anyFinished = false } = {}) {
       ensureOpen();
       validateIdentifier(runId, 'runId');
       const now = new Date().toISOString();
-      const result = db.prepare("UPDATE runs SET state = 'queued', attempts = attempts + 1, updated_at = ? WHERE run_id = ? AND state = 'failed'").run(now, runId);
-      if (Number(result.changes) === 0) throw new RangeError(`Run ${runId} is not a failed run.`);
+      const states = anyFinished ? "('failed', 'succeeded', 'cancelled', 'interrupted')" : "('failed')";
+      const result = db.prepare(`UPDATE runs SET state = 'queued', attempts = attempts + 1, updated_at = ? WHERE run_id = ? AND state IN ${states}`).run(now, runId);
+      if (Number(result.changes) === 0) throw new RangeError(`Run ${runId} is not a ${anyFinished ? 'finished' : 'failed'} run.`);
       return asRun(getRun.get(runId));
     },
 

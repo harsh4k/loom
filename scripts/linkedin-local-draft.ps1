@@ -48,6 +48,15 @@ foreach ($candidate in $topics) {
 $facts = (($story -split "`r?`n") | Where-Object { $_ -match [regex]::Escape($selectedTopic) }) -join "`n"
 if (-not $facts) { throw "No Story Bank facts found for $selectedTopic" }
 $repo = [regex]::Match($facts, 'github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+').Value
+# Links never go in the post body (the repo link is the first comment), so the model never sees
+# them and any it still writes are taken out before the checks.
+$linkPattern = '(?i)\(?\b(?:https?://|www\.|github\.com/)\S+'
+function Remove-Links([string]$text) {
+    $clean = [regex]::Replace($text, $linkPattern, '')
+    $clean = [regex]::Replace($clean, '\(\s*\)|[ \t]+(?=[.,;:!?])', '')
+    return [regex]::Replace($clean, '[ \t]{2,}', ' ')
+}
+$factsForModel = Remove-Links $facts
 
 $avoidRule = if ($avoid.Count) { " Never mention any of these: $($avoid -join ', ')." } else { '' }
 $system = @"
@@ -55,7 +64,7 @@ You write one LinkedIn draft for $author. Return only a JSON object with string 
 
 The audience is $audience. Show real shipped work in a natural, simple, professional voice. Use a number-first opening only if the number is relevant to this topic and supported by the Story Bank; otherwise start with a concrete statement. Never start with a question. Keep the post concise when source facts are thin; do not pad it to a target length. Use 1-2 sentence paragraphs separated by blank lines. End with a specific technical question, not a hiring appeal, and then at most two hashtags. Never put a repository link in the post body; the runner handles the first comment. Avoid generic AI phrases, stacked three-part lists, "The result?", "Here's what", "Stop X, start Y", "proves", "robust", and excessive em dashes. Do not infer what $author thought, felt, learned or wanted; omit missing personal context. Do not inflate a technical fact into a broad claim. Do not name freelance clients or teammates. Do not include phone numbers or email addresses.$avoidRule Formula is a short hook label, not instructions or an engagement claim.
 "@
-$user = "Write a post ONLY about $selectedTopic, around 600-900 characters. Use only the exact facts below. Leave out any personal moment or engineering challenge the facts do not state, rather than filling with assumptions or placeholders. NEVER repeat an existing opening line. STORY BANK FACTS FOR THIS TOPIC:`n$facts`n`nPAST DRAFTS AND OPENERS:`n$prior"
+$user = "Write a post ONLY about $selectedTopic, around 600-900 characters. Use only the exact facts below. Leave out any personal moment or engineering challenge the facts do not state, rather than filling with assumptions or placeholders. NEVER repeat an existing opening line. STORY BANK FACTS FOR THIS TOPIC:`n$factsForModel`n`nPAST DRAFTS AND OPENERS:`n$prior"
 $issue = ''
 for ($attempt = 1; $attempt -le 3; $attempt++) {
     $body = @{
@@ -73,7 +82,7 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
         foreach ($field in @('topic','formula','post')) {
             if (-not ($result.$field -is [string])) { throw "Model response missing $field" }
         }
-        $post = $result.post.Trim()
+        $post = (Remove-Links $result.post).Trim()
         $firstLine = ($post -split "`r?`n")[0].Trim()
         if ($post.Length -lt 250 -or $post.Length -gt 1300) { throw "Draft length $($post.Length) is outside 250-1300 characters" }
         if ($firstLine -match '\?$') { throw 'Draft opens with a question' }

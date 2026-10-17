@@ -431,12 +431,18 @@ async function handle(req, res, { store, queue, draftsRoot, port, linkedin, hub 
       await launchBody(req);
       const missing = missingSetup(AUTOMATIONS.find((item) => item.id === pathname.slice('/api/jobs/'.length)));
       if (missing.length) throw new HttpError(409, 'SETUP_NEEDED', `Set ${missing.join(', ')} in config/profile.json first.`);
+      const jobId = pathname.slice('/api/jobs/'.length);
+      const date = localDate();
       try {
-        const run = queue.enqueue(pathname.slice('/api/jobs/'.length), localDate());
+        const run = queue.enqueue(jobId, date);
         sendJson(res, 202, { runId: run.runId });
       } catch (error) {
-        if (error?.code === 'ERR_DUPLICATE_RUN') throw new HttpError(409, 'DUPLICATE_RUN', 'This automation already ran today.');
-        throw error;
+        if (error?.code !== 'ERR_DUPLICATE_RUN') throw error;
+        // Already ran today: start that run again, unless it is still waiting or running.
+        const existing = store.findRun(jobId, date);
+        if (!existing || existing.state === 'queued' || existing.state === 'running') throw new HttpError(409, 'DUPLICATE_RUN', 'This automation is already running.');
+        const run = queue.retry(existing.runId, { anyFinished: true });
+        sendJson(res, 202, { runId: run.runId });
       }
       return;
     }
