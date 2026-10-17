@@ -132,8 +132,8 @@ GitHub URL, never by name.
   `⚡ In Dev` if pushed in the last 30 days, `🚀 Deployed` if it has a homepage, else `🔧 Maintenance`.
 - On an existing page only Description and Tech Stack change, and only while the field is empty
   or still holds what the hub last wrote. Once you edit a field it is yours.
-- A repo archived on GitHub sets the page's Status to `📦 Archived`. With a GitHub key connected,
-  a repo that no longer exists does too; without one, a repo GitHub can't show (private) is left alone.
+- A repo archived on GitHub sets the page's Status to `📦 Archived`. A repo GitHub doesn't show
+  (private to your key, renamed or deleted) is left alone; archive its page yourself if it's gone.
 - A repo whose name matches a page with no GitHub URL gets no new page; the run says so.
 - A run that would add more than 10 pages or change more than 25 stops before writing anything.
 - Nothing is ever deleted. Each change is in the change log, and Undo puts it back (a page the

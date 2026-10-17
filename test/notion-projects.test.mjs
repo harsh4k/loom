@@ -196,12 +196,13 @@ test('skips quietly when Notion isn’t connected, and flags a refused key', asy
   await assert.rejects(makeJob(dir, fakeWorld({ repos: [repo('a')], notionStatus: 404 })).run({ report: () => {} }), /can’t see the Projects database/);
 }));
 
-test('a repo confirmed gone with a GitHub key archives its page', async () => tempDir(async (dir) => {
+test('a repo the GitHub key can\'t see is left alone, never archived', async () => tempDir(async (dir) => {
   const world = fakeWorld({ repos: [], pages: [{ Name: 'Old', 'GitHub URL': 'https://github.com/example-dev/old', Status: '🚀 Deployed' }] });
   const fetchImpl = async (url, init) => (url.startsWith('https://api.github.com/user/repos') ? json(200, []) : world.fetchImpl(url, init));
   const job = makeJob(dir, { ...world, fetchImpl }, fakeConnections({ notion: 'secret_notion_key_1234567890', github: 'ghp_abcdefghijklmnopqrstuvwxyz' }));
-  assert.match((await job.run({ runId: 'g', report: () => {} })).summary, /1 archived/);
-  assert.equal(prop(pageNamed(world, 'Old'), 'Status'), ARCHIVED);
+  // A fine-grained key limited to one repo gets 404 for every private repo, so 404 proves nothing.
+  assert.doesNotMatch((await job.run({ runId: 'g', report: () => {} })).summary, /archived/);
+  assert.equal(prop(pageNamed(world, 'Old'), 'Status'), '🚀 Deployed');
 }));
 
 test('undo puts a field back, refuses after your edit, and archives a page it added', async () => tempDir(async (dir) => {

@@ -2,7 +2,8 @@
 // - A repo with no page gets a new page.
 // - On an existing page only Description and Tech Stack may change, and only while the field is
 //   empty or still holds what the hub last wrote ("your edits win").
-// - A repo archived on GitHub (or gone, when a GitHub key can confirm it) sets Status to Archived.
+// - A repo archived on GitHub sets Status to Archived. A repo GitHub doesn't show is left alone:
+//   a key limited to some repos can't tell a private repo from a deleted one.
 // Nothing is ever deleted. Every write goes into the change log first, so it can be undone.
 import { isRetryable } from '../errors.mjs';
 import { canonicalRepoUrl, createGitHub, githubUser } from '../github/repos.mjs';
@@ -157,7 +158,7 @@ export function createNotionProjectsJob({ connections, openLedger, fetch: fetchI
     const repos = await github.listRepos({ signal });
     report('Reading your Notion projects.');
     const pages = await notion.listPages({ signal });
-    return { github, notion, repos, pages, canConfirmGone: Boolean(githubKey) };
+    return { github, notion, repos, pages, canConfirmGone: false };
   }
 
   // Turns a Notion refusal into a message that says what to fix.
