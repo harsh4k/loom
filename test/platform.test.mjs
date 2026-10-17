@@ -162,7 +162,12 @@ test('the Ollama keeper starts Ollama when it is off and gives up with a retryab
   const keeper = createOllamaKeeper({
     app: 'C:\\ollama.exe', exists: () => true, pollMs: 5, waitMs: 200,
     fetch: async () => ({ ok: up }),
-    spawn: (_app, args) => { assert.deepEqual(args, ['serve']); launched++; setTimeout(() => { up = true; }, 20); return { unref() {}, on() {} }; },
+    spawn: (command, args, options) => {
+      // Through Start-Process -WindowStyle Hidden, so model runners never open terminal windows.
+      assert.equal(command, 'powershell.exe');
+      assert.match(args.at(-1), /Start-Process -FilePath \$env:LOOM_OLLAMA_EXE -ArgumentList 'serve' -WindowStyle Hidden/);
+      assert.equal(options.env.LOOM_OLLAMA_EXE, 'C:\\ollama.exe');
+      launched++; setTimeout(() => { up = true; }, 20); return { unref() {}, on() {} }; },
   });
   assert.deepEqual(await keeper.ensure(), { started: true });
   assert.deepEqual(await keeper.ensure(), { started: false });

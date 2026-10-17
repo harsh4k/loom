@@ -64,7 +64,10 @@ function startHub() {
     if (!error) return;
     const root = readHubRoot(here);
     try {
-      spawn('node', [path.join(root, 'src', 'server.mjs')], { cwd: root, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      // A hidden console of its own, so programs the hub starts never open terminal windows.
+      spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "Start-Process -FilePath node -ArgumentList ('\"' + $env:LOOM_HUB_SERVER + '\"') -WorkingDirectory $env:LOOM_HUB_ROOT -WindowStyle Hidden"], {
+        stdio: 'ignore', windowsHide: true, env: { ...process.env, LOOM_HUB_ROOT: root, LOOM_HUB_SERVER: path.join(root, 'src', 'server.mjs') },
+      }).on('error', () => {}).unref();
     } catch { /* the offline page keeps retrying */ }
   });
 }
@@ -85,7 +88,11 @@ function startOllama() {
       const ollama = ollamaAppPath();
       if (!ollama || !existsSync(ollama)) return;
       try {
-        spawn(ollama, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref();
+        // Start-Process -WindowStyle Hidden gives Ollama a hidden console of its own; started
+        // directly, each model runner it starts would open a terminal window.
+        spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "Start-Process -FilePath $env:LOOM_OLLAMA_EXE -ArgumentList 'serve' -WindowStyle Hidden"], {
+          stdio: 'ignore', windowsHide: true, env: { ...process.env, LOOM_OLLAMA_EXE: ollama },
+        }).on('error', () => {}).unref();
       } catch { return; }
       const deadline = Date.now() + 30_000;
       while (!(await ollamaUp())) {

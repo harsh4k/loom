@@ -11,6 +11,18 @@ const DEFAULT_APP = process.env.LOCALAPPDATA
   ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : null;
 
+// How Ollama is started on Windows. Started straight from Node (detached), ollama.exe has no
+// console, so every model runner it starts (llama-server, one per model load) opens a new terminal
+// window. Start-Process -WindowStyle Hidden gives it its own hidden console that the runners share,
+// and it outlives whoever started it. The path travels in an environment variable, not the script.
+export function hiddenLaunch(app) {
+  return {
+    command: 'powershell.exe',
+    args: ['-NoProfile', '-NonInteractive', '-Command', "Start-Process -FilePath $env:LOOM_OLLAMA_EXE -ArgumentList 'serve' -WindowStyle Hidden"],
+    options: { stdio: 'ignore', windowsHide: true, env: { ...process.env, LOOM_OLLAMA_EXE: app } },
+  };
+}
+
 const delay = (milliseconds, signal) => new Promise((resolve, reject) => {
   const timer = setTimeout(resolve, milliseconds);
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason ?? new Error('Stopped.')); }, { once: true });
@@ -34,7 +46,8 @@ export function createOllamaKeeper({
 
   function launch() {
     if (!app || !exists(app)) return false;
-    const child = spawn(app, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true });
+    const { command, args, options } = hiddenLaunch(app);
+    const child = spawn(command, args, options);
     child.on?.('error', () => {});
     child.unref?.();
     return true;
