@@ -1,0 +1,20 @@
+{
+  "name": "Your Name",
+  "timeZone": "Asia/Kolkata",
+  "github": { "user": "your-github-username" },
+  "notion": {
+    "projectsDatabaseId": "the id of your Notion Projects database",
+    "reportPageId": "the id of the Notion page the weekly report goes under"
+  },
+  "portfolio": {
+    "repo": "your-github-username/your-portfolio-repo",
+    "file": "src/content/projects.json",
+    "imagesDir": "public/images"
+  },
+  "linkedin": {
+    "folder": "",
+    "topics": ["Project One", "Project Two"],
+    "audience": "software engineering recruiters",
+    "avoid": ["Names that must never appear in a post"]
+  }
+}

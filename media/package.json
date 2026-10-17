@@ -1,0 +1,9 @@
+{
+  "name": "automation-hub-media",
+  "private": true,
+  "description": "Renders post images and videos with HyperFrames. Kept apart from the hub so the hub itself stays dependency-free.",
+  "type": "module",
+  "dependencies": {
+    "hyperframes": "0.8.164"
+  }
+}

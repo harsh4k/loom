@@ -1,0 +1,48 @@
+{
+  "name": "loom-desktop",
+  "productName": "Loom",
+  "version": "1.0.0",
+  "description": "Loom: the desktop app for the local automation hub",
+  "author": "Loom contributors",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node scripts/prepare.mjs && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.8.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "local.loom",
+    "productName": "Loom",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.mjs",
+      "lib.mjs",
+      "offline.html",
+      "assets/**",
+      "hub-root.json",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Loom",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Loom-Setup-${version}.${ext}"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_note": "Copy to config/projects.json. Facts for LinkedIn post images and videos, one entry per topic in profile.json linkedin.topics. Every name, number and claim must come from your Story Bank or the project's README.",
+  "Project One": {
+    "name": "Project One",
+    "eyebrow": "Shipped project",
+    "hook": "One line that makes people stop scrolling.",
+    "tagline": "What the project is, in a few words.",
+    "stats": [["v1.0", "Latest release"], ["3", "Platforms"], ["0", "Cloud APIs"]],
+    "stack": ["TypeScript", "React", "Node.js"],
+    "link": "github.com/your-github-username/project-one",
+    "accent": "#d4bc94",
+    "accent2": "#8f9bb3",
+    "shot": {
+      "url": "https://your-github-username.github.io/project-one/",
+      "image": "https://raw.githubusercontent.com/your-github-username/project-one/HEAD/docs/screenshot.png"
+    }
+  }
+}

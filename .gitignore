@@ -1,0 +1,32 @@
+# Personal settings: copy the .example.json files and fill them in
+config/profile.json
+config/projects.json
+
+# Private hub data: database, keys, sign-ins, drafts, backups
+data/
+
+# Dependencies and build output
+node_modules/
+desktop/dist/
+desktop/hub-root.json
+
+# HyperFrames caches and renders
+.hyperframes/
+renders/
+
+# Local agent notes and personal planning docs
+.agent/
+docs/superpowers/
+docs/full-app-plan.md
+
+# Secrets and editor/OS clutter
+.env
+.env.*
+*.pem
+*.key
+*.log
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store

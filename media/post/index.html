@@ -1,0 +1,350 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"name","type":"string","label":"Project name","default":"Project One"},
+    {"id":"tagline","type":"string","label":"Tagline","default":"What the project is, in a few words."},
+    {"id":"hook","type":"string","label":"Opening line","default":"One line that makes people stop scrolling."},
+    {"id":"eyebrow","type":"string","label":"Eyebrow","default":"Shipped project"},
+    {"id":"author","type":"string","label":"Author","default":"Your Name"},
+    {"id":"stats","type":"string","label":"Stats (value|label per line)","default":"v1.0|Latest release\n3|Platforms\n0|Cloud APIs"},
+    {"id":"stack","type":"string","label":"Stack (comma separated)","default":"TypeScript, React, Node.js"},
+    {"id":"link","type":"string","label":"Link","default":"github.com/your-github-username/project-one"},
+    {"id":"accent","type":"color","label":"Accent","default":"#7c8cff"},
+    {"id":"accent2","type":"color","label":"Second accent","default":"#ff7ab6"},
+    {"id":"command","type":"string","label":"Terminal command","default":""},
+    {"id":"footnote","type":"string","label":"Footnote","default":"Repo link in the comments"},
+    {"id":"shot","type":"string","label":"Screenshot","default":""}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1350" />
+    <title>Project post</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/InterVariable.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Cascadia Mono"; src: local("Cascadia Mono"), local("Consolas"); }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #070709; color: #f5f5f7; font-family: "Inter", sans-serif; -webkit-font-smoothing: antialiased; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #070709; }
+
+      /* Shared stage: accent light, a fine grid and drawn geometry that every scene sits on. */
+      .glow { position: absolute; width: 1100px; height: 1100px; border-radius: 50%; filter: blur(120px); opacity: 0.5; }
+      #glow-a { left: -380px; top: -420px; background: radial-gradient(circle, var(--accent) 0%, transparent 62%); }
+      #glow-b { right: -460px; bottom: -520px; background: radial-gradient(circle, var(--accent2) 0%, transparent 62%); opacity: 0.34; }
+      .grid-lines { position: absolute; inset: 0; opacity: 0.07;
+        background-image: linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px);
+        background-size: 90px 90px; mask-image: radial-gradient(70% 55% at 50% 45%, #000 0%, transparent 75%); }
+      .vignette { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.6) 100%); }
+      #geometry { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+      #geometry circle, #geometry line { fill: none; stroke-linecap: round; }
+      .ring-a { stroke: var(--accent); stroke-width: 2; opacity: 0.7; }
+      .ring-b { stroke: rgba(255, 255, 255, 0.18); stroke-width: 1.5; stroke-dasharray: 4 14; }
+      .ring-c { stroke: var(--accent2); stroke-width: 2; opacity: 0.55; }
+      .sweep { stroke: url(#sweep-gradient); stroke-width: 3; }
+      .orbit-dot { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 30px var(--accent); }
+
+      .scene { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 84px; text-align: center; }
+      .accent-text { background: linear-gradient(100deg, #fff 10%, var(--accent) 55%, var(--accent2) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .mask { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.04em 0.12em; margin-bottom: -0.12em; }
+      .mask > span { display: inline-block; white-space: pre; }
+      .word { display: inline-block; white-space: nowrap; }
+
+      /* 1. Hook */
+      #hook { margin: 0; font-size: 132px; line-height: 1.04; font-weight: 780; letter-spacing: -0.055em; }
+      #hook-bar { width: 220px; height: 10px; margin-top: 46px; border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+      /* 2. Title */
+      .pill { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 22px; border-radius: 24px;
+        background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        font-size: 21px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.82); }
+      .pill .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px var(--accent); }
+      #title-name { margin: 40px 0 0; font-size: 196px; line-height: 0.95; font-weight: 800; letter-spacing: -0.065em; }
+      #title-name .mask > span { background: linear-gradient(180deg, #ffffff 35%, rgba(255, 255, 255, 0.7) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      #title-tagline { margin: 34px 0 0; max-width: 860px; font-size: 44px; line-height: 1.22; font-weight: 500; letter-spacing: -0.025em; color: rgba(255, 255, 255, 0.68); }
+
+      /* 3. Stats, one at a time */
+      .stat-scene .stat-index { font: 600 24px "Cascadia Mono", monospace; letter-spacing: 0.1em; color: rgba(255, 255, 255, 0.55); }
+      .stat-scene .stat-big { margin-top: 26px; font-size: 300px; line-height: 0.9; font-weight: 800; letter-spacing: -0.07em; font-variant-numeric: tabular-nums; }
+      .stat-scene .stat-text { margin-top: 34px; font-size: 54px; line-height: 1.15; font-weight: 600; letter-spacing: -0.03em; color: rgba(255, 255, 255, 0.84); }
+      .wipe { position: absolute; left: 50%; top: 50%; width: 2400px; height: 2400px; margin: -1200px 0 0 -1200px; border-radius: 50%;
+        background: radial-gradient(circle, var(--accent) 0%, var(--accent2) 100%); }
+
+      /* 4. Stack */
+      #stack-heading { font-size: 30px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }
+      #stack-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 900px; margin-top: 44px; }
+      .tech { height: 84px; padding: 0 34px; border-radius: 42px; display: flex; align-items: center; font-size: 36px; font-weight: 650; letter-spacing: -0.02em;
+        background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 20px 50px rgba(0, 0, 0, 0.35); }
+      .tech:nth-child(3n + 1) { box-shadow: inset 0 0 0 1.5px var(--accent), 0 20px 50px rgba(0, 0, 0, 0.35); }
+
+      /* 5. End card: the same layout as the still image. */
+      #poster { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 72px 72px 64px; }
+      .top { display: flex; align-items: center; justify-content: space-between; height: 44px; }
+      .eyebrow { height: 44px; font-size: 20px; }
+      .author { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: rgba(255, 255, 255, 0.62); }
+      #name { margin: 44px 0 0; font-size: 128px; line-height: 0.98; font-weight: 780; letter-spacing: -0.06em;
+        background: linear-gradient(180deg, #ffffff 30%, rgba(255, 255, 255, 0.72) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      #tagline { margin: 18px 0 0; max-width: 900px; font-size: 40px; line-height: 1.22; font-weight: 500; letter-spacing: -0.025em; color: rgba(255, 255, 255, 0.64); }
+      .window-wrap { position: relative; flex: 1; min-height: 0; margin-top: 44px; }
+      .window { position: absolute; inset: 0; border-radius: 22px; overflow: hidden; background: #111114;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 40px 90px rgba(0, 0, 0, 0.6), 0 0 120px -20px var(--accent); }
+      .chrome { position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex; align-items: center; gap: 9px; padding: 0 20px;
+        background: rgba(28, 28, 32, 0.92); border-bottom: 1px solid rgba(255, 255, 255, 0.08); z-index: 2; }
+      .chrome i { width: 13px; height: 13px; border-radius: 50%; display: block; }
+      .chrome i:nth-child(1) { background: #ff5f57; } .chrome i:nth-child(2) { background: #febc2e; } .chrome i:nth-child(3) { background: #28c840; }
+      .chrome .address { flex: 1; margin: 0 56px 0 24px; height: 28px; border-radius: 8px; background: rgba(255, 255, 255, 0.06);
+        display: flex; align-items: center; justify-content: center; font: 500 15px "Cascadia Mono", monospace; color: rgba(255, 255, 255, 0.5); }
+      .viewport { position: absolute; left: 0; right: 0; top: 48px; bottom: 0; overflow: hidden; }
+      #shot { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0%; display: block; }
+      #wordmark { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
+        background: radial-gradient(70% 80% at 50% 40%, rgba(255, 255, 255, 0.06), transparent 70%); }
+      #wordmark .mark { font-size: 150px; font-weight: 800; letter-spacing: -0.07em; line-height: 1; }
+      #wordmark .mono { font: 500 24px "Cascadia Mono", monospace; color: rgba(255, 255, 255, 0.5); }
+      .no-shot #wordmark { display: flex; }
+      .no-shot #shot { display: none; }
+      .stats { display: grid; gap: 18px; margin-top: 36px; }
+      .stat { padding: 22px 24px 20px; border-radius: 20px; background: rgba(255, 255, 255, 0.055); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09); }
+      .stat-value { font-size: 54px; line-height: 1; font-weight: 740; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+      .stat-label { margin-top: 10px; font-size: 21px; line-height: 1.25; font-weight: 500; color: rgba(255, 255, 255, 0.58); }
+      .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+      .chip { height: 42px; padding: 0 18px; border-radius: 21px; display: flex; align-items: center; font-size: 20px; font-weight: 550;
+        color: rgba(255, 255, 255, 0.82); background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+      .footer { display: flex; align-items: center; justify-content: space-between; margin-top: 28px; height: 36px; }
+      .link { display: flex; align-items: center; gap: 12px; font: 500 22px "Cascadia Mono", monospace; color: rgba(255, 255, 255, 0.78); }
+      .link .arrow { color: var(--accent); }
+      .tagmark { font-size: 20px; font-weight: 600; color: rgba(255, 255, 255, 0.56); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="post" data-start="0" data-width="1080" data-height="1350">
+      <div class="glow" id="glow-a" data-layout-allow-overflow></div>
+      <div class="glow" id="glow-b" data-layout-allow-overflow></div>
+      <div class="grid-lines"></div>
+      <svg id="geometry" viewBox="0 0 1080 1350" aria-hidden="true" data-layout-allow-overflow>
+        <defs>
+          <linearGradient id="sweep-gradient" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stop-color="var(--accent)" stop-opacity="0" />
+            <stop offset="0.5" stop-color="var(--accent)" />
+            <stop offset="1" stop-color="var(--accent2)" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <circle class="ring-b" id="ring-b" cx="540" cy="640" r="470" />
+        <circle class="ring-a" id="ring-a" cx="540" cy="640" r="380" pathLength="1" stroke-dasharray="1 1" />
+        <circle class="ring-c" id="ring-c" cx="540" cy="640" r="300" pathLength="1" stroke-dasharray="1 1" />
+        <line class="sweep" id="sweep-1" x1="-200" y1="300" x2="1280" y2="300" />
+        <line class="sweep" id="sweep-2" x1="-200" y1="1060" x2="1280" y2="1060" />
+      </svg>
+      <div class="orbit-dot" id="orbit-dot" data-layout-allow-overflow></div>
+      <div class="vignette"></div>
+
+      <section class="scene" id="scene-hook"><h1 id="hook"></h1><div id="hook-bar"></div></section>
+
+      <section class="scene" id="scene-title">
+        <div class="pill" id="title-pill"><span class="dot"></span><span id="title-eyebrow"></span></div>
+        <h2 id="title-name"></h2>
+        <p id="title-tagline"></p>
+      </section>
+
+      <div id="stat-scenes"></div>
+
+      <section class="scene" id="scene-stack">
+        <div id="stack-heading">Built with</div>
+        <div id="stack-grid"></div>
+      </section>
+
+      <div class="wipe" id="wipe"></div>
+
+      <section id="poster">
+        <div class="top">
+          <div class="pill eyebrow" id="eyebrow-pill"><span class="dot"></span><span id="eyebrow"></span></div>
+          <div class="author" id="author"></div>
+        </div>
+        <h2 id="name"></h2>
+        <p id="tagline"></p>
+        <div class="window-wrap">
+          <div class="window" id="window">
+            <div class="chrome"><i></i><i></i><i></i><div class="address" id="address"></div></div>
+            <div class="viewport">
+              <img id="shot" alt="" src="assets/blank.png" />
+              <div id="wordmark"><div class="mark accent-text" id="wordmark-name"></div><div class="mono" id="wordmark-stack"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="chips" id="chips"></div>
+        <div class="footer">
+          <div class="link" id="link-row"><span class="arrow">→</span><span id="link"></span></div>
+          <div class="tagmark" id="footnote"></div>
+        </div>
+      </section>
+    </div>
+    <script>
+      const vars = window.__hyperframes.getVariables();
+      const byId = (id) => document.getElementById(id);
+      const make = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
+      // Wrap each word (or letter) in a mask so it can rise into view from below a clean edge.
+      const masked = (target, text, { letters = false, className = "" } = {}) => {
+        const words = text.trim().split(/\s+/).map((word, i, all) => (i < all.length - 1 ? `${word} ` : word));
+        for (const word of words) {
+          // Letters stay grouped by word so a name never breaks mid-word ("Bunny O / S").
+          const holder = letters ? make("span", "word") : target;
+          for (const part of letters ? Array.from(word) : [word]) { const mask = make("span", "mask"); mask.append(make("span", className, part)); holder.append(mask); }
+          if (letters) target.append(holder);
+        }
+        return target.querySelectorAll(".mask > span");
+      };
+
+      const stats = String(vars.stats).split("\n").map((line) => line.split("|")).filter((parts) => parts[0] && parts[1]).slice(0, 3)
+        .map(([value, label]) => ({ value: value.trim(), label: label.trim() }));
+      const stack = String(vars.stack).split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8);
+      const hasShot = Boolean(String(vars.shot).trim());
+
+      // Fill the scenes.
+      masked(byId("hook"), String(vars.hook), { className: "accent-text" });
+      byId("title-eyebrow").textContent = vars.eyebrow;
+      masked(byId("title-name"), String(vars.name), { letters: true });
+      byId("title-tagline").textContent = vars.tagline;
+      stats.forEach((stat, index) => {
+        const scene = make("section", "scene stat-scene");
+        scene.id = `stat-${index}`;
+        scene.append(make("div", "stat-index", `${String(index + 1).padStart(2, "0")} / ${String(stats.length).padStart(2, "0")}`));
+        const big = make("div", "stat-big accent-text", stat.value);
+        big.id = `stat-big-${index}`;
+        const text = make("div", "stat-text");
+        masked(text, stat.label);
+        scene.append(big, text);
+        byId("stat-scenes").append(scene);
+      });
+      for (const item of stack) byId("stack-grid").append(make("div", "tech", item));
+
+      byId("eyebrow").textContent = vars.eyebrow;
+      byId("author").textContent = vars.author;
+      byId("name").textContent = vars.name;
+      byId("tagline").textContent = vars.tagline;
+      byId("link").textContent = vars.link;
+      byId("address").textContent = vars.link;
+      byId("footnote").textContent = vars.footnote;
+      byId("wordmark-name").textContent = vars.name;
+      byId("wordmark-stack").textContent = String(vars.command).trim() ? `$ ${String(vars.command).trim()}` : stack.slice(0, 4).join("  ·  ");
+      for (const stat of stats) {
+        const card = make("div", "stat");
+        card.append(make("div", "stat-value", stat.value), make("div", "stat-label", stat.label));
+        byId("stats").append(card);
+      }
+      byId("stats").style.gridTemplateColumns = `repeat(${Math.max(stats.length, 1)}, 1fr)`;
+      if (!stats.length) byId("stats").style.display = "none";
+      for (const item of stack) byId("chips").append(make("div", "chip", item));
+      if (hasShot) byId("shot").src = vars.shot;
+      else byId("window").classList.add("no-shot");
+
+      // Numbers like "8,192", "17th" or "100%" count up; anything else ("v0.3.4") is revealed as is.
+      function counter(el, value) {
+        const match = /^(\D*)([\d,]+(?:\.\d+)?)(.*)$/.exec(value);
+        if (!match || /\d\.\d.*\./.test(value)) return null;
+        const target = Number(match[2].replace(/,/g, ""));
+        const decimals = (match[2].split(".")[1] ?? "").length;
+        const grouped = match[2].includes(",");
+        const proxy = { n: 0 };
+        const paint = () => {
+          const shown = proxy.n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: grouped });
+          el.textContent = `${match[1]}${shown}${match[3]}`;
+        };
+        paint();
+        return { proxy, target, paint };
+      }
+
+      // Built synchronously: the renderer reads the timeline length as soon as the page loads.
+      function build() {
+        const tl = gsap.timeline({ paused: true });
+        const scenes = ["#scene-title", ...stats.map((_, i) => `#stat-${i}`), "#scene-stack", "#poster"];
+        gsap.set(scenes, { autoAlpha: 0 });
+        gsap.set("#wipe", { scale: 0 });
+
+        // 1. Hook: ring draws, words rise through their masks, the bar wipes in.
+        let t = 0;
+        tl.fromTo("#ring-a", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.4, ease: "power3.inOut" }, t);
+        tl.fromTo("#hook .mask > span", { yPercent: 110 }, { yPercent: 0, duration: 0.8, ease: "expo.out", stagger: 0.11 }, t + 0.15);
+        tl.fromTo("#hook-bar", { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.7, ease: "expo.out" }, t + 0.7);
+        tl.fromTo("#sweep-1", { x: -1400 }, { x: 1400, duration: 1.6, ease: "power2.inOut" }, t + 0.3);
+        tl.to("#hook .mask > span", { yPercent: -110, duration: 0.5, ease: "power3.in", stagger: 0.05 }, t + 2.0);
+        tl.to("#hook-bar", { scaleX: 0, transformOrigin: "100% 50%", duration: 0.4, ease: "power3.in" }, t + 2.0);
+        tl.set("#scene-hook", { autoAlpha: 0 }, t + 2.6);
+
+        // 2. Title: letters rise one by one, inner ring draws, tagline settles.
+        t = 2.55;
+        tl.set("#scene-title", { autoAlpha: 1 }, t);
+        tl.fromTo("#title-pill", { y: 30, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 0.6, ease: "back.out(2)" }, t);
+        tl.fromTo("#title-name .mask > span", { yPercent: 115, rotation: 6 }, { yPercent: 0, rotation: 0, duration: 0.9, ease: "expo.out", stagger: 0.045 }, t + 0.15);
+        tl.fromTo("#ring-c", { strokeDashoffset: -1 }, { strokeDashoffset: 0, duration: 1.2, ease: "power3.inOut" }, t + 0.2);
+        tl.fromTo("#title-tagline", { y: 40, opacity: 0, filter: "blur(10px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.8, ease: "power3.out" }, t + 0.8);
+        tl.fromTo("#ring-a", { scale: 1, svgOrigin: "540 640" }, { scale: 1.12, svgOrigin: "540 640", duration: 2.6, ease: "sine.inOut" }, t);
+        tl.to("#scene-title", { scale: 1.08, opacity: 0, filter: "blur(14px)", duration: 0.5, ease: "power2.in" }, t + 2.5);
+        tl.set("#scene-title", { autoAlpha: 0 }, t + 3.0);
+        t += 3.0;
+
+        // 3. Stats: an accent circle wipes the frame, then each number counts up on its own.
+        if (stats.length) {
+          tl.fromTo("#wipe", { scale: 0 }, { scale: 1, duration: 0.5, ease: "power3.in" }, t - 0.15);
+          tl.to("#wipe", { scale: 0, duration: 0.55, ease: "power3.out" }, t + 0.35);
+        }
+        stats.forEach((stat, index) => {
+          const start = t + 0.45 + index * 1.65;
+          const scene = `#stat-${index}`;
+          tl.set(scene, { autoAlpha: 1 }, start);
+          tl.fromTo(`${scene} .stat-index`, { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, start);
+          tl.fromTo(`#stat-big-${index}`, { scale: 0.6, opacity: 0, filter: "blur(20px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.7, ease: "expo.out" }, start + 0.05);
+          const count = counter(byId(`stat-big-${index}`), stat.value);
+          if (count) tl.fromTo(count.proxy, { n: 0 }, { n: count.target, duration: 0.9, ease: "power3.out", onUpdate: count.paint }, start + 0.05);
+          tl.fromTo(`${scene} .stat-text .mask > span`, { yPercent: 110 }, { yPercent: 0, duration: 0.6, ease: "expo.out", stagger: 0.06 }, start + 0.3);
+          tl.to(scene, { y: -120, opacity: 0, duration: 0.4, ease: "power3.in" }, start + 1.3);
+          tl.set(scene, { autoAlpha: 0 }, start + 1.65);
+        });
+        if (stats.length) t += 0.45 + stats.length * 1.65;
+
+        // 4. Stack: technologies burst in from the centre into a grid.
+        tl.set("#scene-stack", { autoAlpha: 1 }, t);
+        tl.fromTo("#stack-heading", { opacity: 0, y: 24, scale: 1.25 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "expo.out" }, t);
+        tl.fromTo(".tech", { scale: 0, opacity: 0, rotation: (i) => [-12, 9, -6, 13, -9, 6, -13, 10][i % 8] }, {
+          scale: 1, opacity: 1, rotation: 0, duration: 0.6, ease: "back.out(1.8)", stagger: { each: 0.08, from: "center" },
+        }, t + 0.2);
+        tl.fromTo("#sweep-2", { x: 1400 }, { x: -1400, duration: 1.6, ease: "power2.inOut" }, t + 0.3);
+        tl.to(".tech", { y: -60, opacity: 0, duration: 0.4, ease: "power3.in", stagger: { each: 0.03, from: "edges" } }, t + 2.1);
+        tl.set("#scene-stack", { autoAlpha: 0 }, t + 2.7);
+        t += 2.6;
+
+        // 5. End card builds and holds: this last frame is also the post image.
+        tl.set("#poster", { autoAlpha: 1 }, t);
+        tl.to(["#ring-a", "#ring-b", "#ring-c", "#orbit-dot"], { opacity: 0, duration: 0.6, ease: "power2.out" }, t);
+        tl.fromTo("#eyebrow-pill", { y: -20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, t);
+        tl.fromTo("#author", { opacity: 0 }, { opacity: 1, duration: 0.5 }, t + 0.1);
+        tl.fromTo("#name", { y: 50, opacity: 0, filter: "blur(14px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.8, ease: "expo.out" }, t + 0.1);
+        tl.fromTo("#tagline", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, t + 0.35);
+        tl.fromTo("#window", { y: 200, opacity: 0, scale: 0.92, rotationX: 20, transformPerspective: 1600, transformOrigin: "50% 100%" },
+          { y: 0, opacity: 1, scale: 1, rotationX: 0, duration: 1.1, ease: "expo.out" }, t + 0.5);
+        tl.fromTo(".stat", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out", stagger: 0.1 }, t + 0.9);
+        tl.fromTo(".chip", { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power2.out", stagger: 0.05 }, t + 1.1);
+        tl.fromTo("#link-row", { x: -24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, t + 1.4);
+        tl.fromTo("#footnote", { opacity: 0 }, { opacity: 1, duration: 0.6 }, t + 1.5);
+        tl.to({}, { duration: 2.4 }, t + 1.6);
+        const end = t + 4;
+        // Ambient motion for the whole film, sized to its length so short films (no stats) end on time.
+        tl.fromTo("#glow-a", { x: 0, y: 0 }, { x: 180, y: 140, duration: end, ease: "sine.inOut" }, 0);
+        tl.fromTo("#glow-b", { x: 0, y: 0 }, { x: -160, y: -110, duration: end, ease: "sine.inOut" }, 0);
+        tl.fromTo("#ring-b", { rotation: 0, svgOrigin: "540 640" }, { rotation: 90, svgOrigin: "540 640", duration: end, ease: "none" }, 0);
+        // The dot rides the drawn 380px ring.
+        const orbit = { a: 0 };
+        tl.fromTo(orbit, { a: 0 }, {
+          a: 1, duration: end, ease: "none",
+          onUpdate() {
+            const angle = -Math.PI / 2 + orbit.a * Math.PI * 2.4;
+            gsap.set("#orbit-dot", { x: 531 + Math.cos(angle) * 380, y: 631 + Math.sin(angle) * 380 });
+          },
+        }, 0);
+
+        window.__timelines["post"] = tl;
+      }
+      build();
+    </script>
+  </body>
+</html>

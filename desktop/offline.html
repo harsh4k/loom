@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'; font-src 'self'">
+<title>Loom</title>
+<style>
+  @font-face { font-family: "Audiowide"; src: url("assets/audiowide.woff2") format("woff2"); }
+  @font-face { font-family: "Open Sans"; src: url("assets/open-sans.woff2") format("woff2"); font-weight: 300 800; }
+  :root { color-scheme: light; --cream: #f7f0e3; --ink: #141413; --ink-2: #4a463f; --ease: cubic-bezier(0.16, 1, 0.3, 1); }
+  body { margin: 0; height: 100vh; display: grid; place-items: center; background: var(--cream); color: var(--ink); font: 16px/1.55 "Open Sans", "Segoe UI", sans-serif; }
+  main { text-align: center; max-width: 440px; padding: 24px; animation: rise 600ms var(--ease) both; }
+  img { width: 96px; height: 96px; animation: float 2.4s ease-in-out infinite; }
+  h1 { font: 400 1.75rem/1.2 "Audiowide", sans-serif; margin: 20px 0 8px; }
+  p { color: var(--ink-2); margin: 0; }
+  .dots { display: inline-flex; gap: 6px; margin-top: 20px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; animation: bounce 1.2s ease-in-out infinite; }
+  .dots i:nth-child(1) { background: #f5d547; }
+  .dots i:nth-child(2) { background: #f4b6d2; animation-delay: 120ms; }
+  .dots i:nth-child(3) { background: #a9bb6e; animation-delay: 240ms; }
+  .dots i:nth-child(4) { background: #b5c8f0; animation-delay: 360ms; }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+  @keyframes float { 50% { transform: translateY(-8px) rotate(-3deg); } }
+  @keyframes bounce { 50% { transform: translateY(-8px); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <img src="assets/icon.svg" alt="">
+  <h1 id="title">Starting Loom</h1>
+  <p id="detail">This takes a few seconds.</p>
+  <div class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+</main>
+<script>
+  if (new URLSearchParams(location.search).get('state') === 'down') {
+    document.getElementById('title').textContent = 'Can’t reach the hub';
+    document.getElementById('detail').textContent = 'Loom keeps trying every few seconds. If this doesn’t clear, restart your PC or run the “Automation Hub” task in Task Scheduler.';
+  }
+</script>
+</body>
+</html>

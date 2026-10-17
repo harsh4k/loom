@@ -1,0 +1,8 @@
+{
+  "name": "Test Person",
+  "timeZone": "Asia/Kolkata",
+  "github": { "user": "example-dev" },
+  "notion": { "projectsDatabaseId": "11111111-2222-3333-4444-555555555555", "reportPageId": "66666666-7777-8888-9999-000000000000" },
+  "portfolio": { "repo": "example-dev/portfolio", "file": "site/src/content/projects.json", "imagesDir": "site/public/images" },
+  "linkedin": { "folder": "C:\\Loom\\linkedin", "topics": ["Bunny OS", "Shipd"], "avoid": ["Secret Client"] }
+}

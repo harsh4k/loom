@@ -1,0 +1,15 @@
+{
+  "name": "Loom",
+  "short_name": "Loom",
+  "description": "Watch your local automations: LinkedIn posts, Notion projects, project details, portfolio sync and the weekly report.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f0e3",
+  "theme_color": "#f7f0e3",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
