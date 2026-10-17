@@ -70,8 +70,15 @@ function fakeWorld({ pushedAt = '2026-10-10T00:00:00Z', description = '' } = {})
     if (pathname.endsWith('/commits')) return json(200, [{ commit: { message: 'Add HTML report\n\nlonger body' } }]);
     if (pathname.endsWith('/languages')) return json(200, { PowerShell: 100 });
     if (pathname.endsWith('/query')) return json(200, { results: [page], has_more: false });
-    if (pathname === '/v1/pages/page-1' && method === 'PATCH') { Object.assign(page.properties, JSON.parse(init.body).properties); return json(200, page); }
+    if (pathname === '/v1/pages/page-1' && method === 'PATCH') {
+      const body = JSON.parse(init.body);
+      if (body.properties) Object.assign(page.properties, body.properties);
+      if ('icon' in body) page.icon = body.icon;
+      return json(200, page);
+    }
+    if (pathname === '/v1/pages/page-1') return json(200, page);
     const childMatch = /^\/v1\/blocks\/page-1\/children$/.exec(pathname);
+    if (childMatch && method === 'GET') return json(200, { results: world.children.map((id) => blocks.get(id)).filter((block) => !block.archived), has_more: false });
     if (childMatch && method === 'PATCH') {
       world.appended++;
       const made = JSON.parse(init.body).children.map((block) => { const id = `block-${nextBlock++}`; const full = { id, archived: false, ...block }; blocks.set(id, full); children.push(id); return full; });
@@ -91,25 +98,34 @@ function fakeWorld({ pushedAt = '2026-10-10T00:00:00Z', description = '' } = {})
 
 const text = (block) => block[block.type].rich_text.map((part) => part.text.content).join('');
 
-function makeJob(dir, world, answers) {
+function makeJob(dir, world, answers, { emojis = ['💻', '🧾'] } = {}) {
   const prompts = [];
+  const iconPrompts = [];
   const job = createProjectDetailsJob({
     connections: () => ({ token: (provider) => (provider === 'notion' ? 'secret_notion_key_1234567890' : null), reportProblem: async () => {} }),
     openLedger: () => openLedger(path.join(dir, 'hub.sqlite')),
-    askJson: async (request) => { prompts.push(request); return answers.shift(); },
+    askJson: async (request) => {
+      if (request.schema.properties.emojis) { iconPrompts.push(request); return { emojis }; }
+      prompts.push(request); return answers.shift();
+    },
     stateFile: path.join(dir, 'project-details.json'),
     fetch: world.fetchImpl,
   });
-  return { job, prompts };
+  return { job, prompts, iconPrompts };
 }
+const live = (world) => world.children.map((id) => world.blocks.get(id)).filter((block) => !block.archived);
 
 test('writes a hub-owned section, fills an empty Description, and skips unchanged repos', async () => tempDir(async (dir) => {
   const world = fakeWorld();
-  const { job, prompts } = makeJob(dir, world, [GOOD]);
+  const { job, prompts, iconPrompts } = makeJob(dir, world, [GOOD]);
   const result = await job.run({ runId: 'r1', report: () => {} });
   assert.match(result.summary, /updated Shipd/);
-  assert.equal(world.children.length, 4);
-  const [divider, heading, desc, features] = world.children.map((id) => world.blocks.get(id));
+  assert.match(result.summary, /icons for Shipd 🧾/);
+  assert.equal(world.children.length, 5, 'an empty page gets an intro above the section');
+  const [intro, divider, heading, desc, features] = world.children.map((id) => world.blocks.get(id));
+  assert.equal(text(intro), GOOD.description);
+  assert.deepEqual(world.page.icon, { type: 'emoji', emoji: '🧾' }, 'the generic first pick is skipped');
+  assert.match(iconPrompts[0].prompt, /Name: Shipd/);
   assert.equal(divider.type, 'divider');
   assert.equal(text(heading), HEADING);
   assert.equal(text(desc), GOOD.description);
@@ -119,8 +135,11 @@ test('writes a hub-owned section, fills an empty Description, and skips unchange
   assert.match(prompts[0].prompt, /<repo>[\s\S]*Daily dev and activity report[\s\S]*<\/repo>/);
   assert.ok(JSON.parse(await readFile(path.join(dir, 'project-details.json'), 'utf8')).pages['page-1']);
 
-  assert.match((await job.run({ runId: 'r2', report: () => {} })).summary, /no project changed/);
+  const again = await job.run({ runId: 'r2', report: () => {} });
+  assert.match(again.summary, /no project changed/);
+  assert.doesNotMatch(again.summary, /Page look/);
   assert.equal(prompts.length, 1, 'an unchanged repo is not sent to the model again');
+  assert.equal(iconPrompts.length, 1, 'a page with an icon is not asked about again');
 }));
 
 test('rewrites its own section in place after a push, and leaves it alone once you edit it', async () => tempDir(async (dir) => {
@@ -131,13 +150,13 @@ test('rewrites its own section in place after a push, and leaves it alone once y
   world.repo.pushed_at = '2026-10-12T00:00:00Z';
   await job.run({ runId: 'b', report: () => {} });
   assert.equal(world.appended, 1, 'the section is updated in place, not added twice');
-  assert.match(text(world.blocks.get(world.children[3])), /Runs on Windows/);
+  assert.match(text(world.blocks.get(world.children[4])), /Runs on Windows/);
 
   // You edit the section; the next push changes nothing on that page.
-  world.blocks.get(world.children[2]).paragraph.rich_text = [{ type: 'text', text: { content: 'My own words' } }];
+  world.blocks.get(world.children[3]).paragraph.rich_text = [{ type: 'text', text: { content: 'My own words' } }];
   world.repo.pushed_at = '2026-10-14T00:00:00Z';
   assert.match((await job.run({ runId: 'c', report: () => {} })).summary, /Skipped Shipd \(you edited its Project details section\)/);
-  assert.equal(text(world.blocks.get(world.children[2])), 'My own words');
+  assert.equal(text(world.blocks.get(world.children[3])), 'My own words');
 }));
 
 test('skips output that fails the checks and writes nothing', async () => tempDir(async (dir) => {
@@ -157,10 +176,55 @@ test('undo restores the previous details, and refuses a brand-new section', asyn
   await job.run({ runId: 'b', report: () => {} });
   const ledger = openLedger(path.join(dir, 'hub.sqlite'));
   try {
-    const sections = ledger.list().filter((change) => change.target === 'notion-section');
+    const sections = ledger.list().filter((change) => change.target === 'notion-section' && change.field === 'details');
     const [latest, first] = sections;
     await assert.rejects(job.undo(first), /can’t be put back/);
     await job.undo(latest);
-    assert.equal(text(world.blocks.get(world.children[2])), GOOD.description);
+    assert.equal(text(world.blocks.get(world.children[3])), GOOD.description);
   } finally { ledger.close(); }
+}));
+
+test('page look: a placeholder intro is replaced, a hub-only body gets an intro on top, your own intro and icon stay', async () => tempDir(async (dir) => {
+  const { chooseEmoji, introPlan, oneEmoji } = await import('../src/details/look.mjs');
+  assert.equal(oneEmoji('🛒'), '🛒');
+  assert.equal(oneEmoji('🏳️‍🌈'), '🏳️‍🌈');
+  assert.equal(oneEmoji('🛒🛒'), null);
+  assert.equal(oneEmoji('cart'), null);
+  assert.equal(chooseEmoji(['🚀', '🛒', '🎙️'], new Set(['🛒'])), '🎙️');
+  assert.equal(chooseEmoji(['not an emoji'], new Set()), null);
+  const para = (id, content) => ({ id, type: 'paragraph', paragraph: { rich_text: [{ plain_text: content }] } });
+  assert.equal(introPlan({ blocks: [para('a', 'Private repo, not publicly readable. Fill in tech stack and description.')] }).kind, 'replace');
+  assert.equal(introPlan({ blocks: [para('a', 'Words I wrote myself.')] }), null);
+  assert.equal(introPlan({ blocks: [] }).kind, 'append');
+
+  // A page made before this change: the body is only the hub's section, and it has no icon.
+  const world = fakeWorld();
+  const { job, iconPrompts } = makeJob(dir, world, [GOOD]);
+  await job.run({ runId: 'a', report: () => {} });
+  // Turn it into the old layout: no intro block, and a change log that never recorded one.
+  const sectionIds = world.children.slice(1);
+  world.blocks.get(world.children[0]).archived = true;
+  world.children.shift();
+  for (const file of ['hub.sqlite', 'hub.sqlite-wal', 'hub.sqlite-shm']) await rm(path.join(dir, file), { force: true });
+  const fresh = openLedger(path.join(dir, 'hub.sqlite'));
+  fresh.applied(fresh.begin({ runId: 'old', jobId: 'project-details', target: 'notion-section', targetId: 'page-1', field: 'details', label: 'old', before: null, after: GOOD }).id, { after: { ...GOOD, blockIds: sectionIds } });
+  fresh.close();
+  world.page.icon = null;
+  const result = await job.run({ runId: 'b', report: () => {} });
+  assert.match(result.summary, /intros for Shipd/);
+  const body = live(world);
+  assert.equal(body.length, 5);
+  assert.equal(text(body[0]), GOOD.description);
+  assert.equal(body[1].type, 'divider');
+  assert.ok(sectionIds.every((id) => world.blocks.get(id).archived), 'the old section copy went to the trash');
+  assert.equal(iconPrompts.length, 2);
+
+  // You edit the intro and pick your own icon: nothing changes after that.
+  body[0].paragraph.rich_text = [{ type: 'text', text: { content: 'Mine now.' } }];
+  world.page.icon = { type: 'emoji', emoji: '🐇' };
+  const later = await job.run({ runId: 'c', report: () => {} });
+  assert.doesNotMatch(later.summary, /Page look/);
+  assert.equal(text(live(world)[0]), 'Mine now.');
+  assert.equal(world.page.icon.emoji, '🐇');
+  assert.equal(iconPrompts.length, 2);
 }));

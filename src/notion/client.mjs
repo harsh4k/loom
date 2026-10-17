@@ -1,5 +1,6 @@
 // A small Notion API client for the Projects database: read every page, create a page, and
-// change page properties. It never deletes or trashes anything.
+// change page properties and icons. It never deletes pages; the only blocks it moves to the
+// trash are ones the hub wrote itself (see trashBlock).
 import { NOTION_VERSION } from '../connections.mjs';
 import { createJsonClient } from '../http.mjs';
 import { getProfile, need } from '../profile.mjs';
@@ -21,6 +22,8 @@ export function readPage(page) {
     'Tech Stack': plainText(props['Tech Stack']?.rich_text),
     Status: props.Status?.select?.name ?? null,
     Type: props.Type?.select?.name ?? null,
+    // The page emoji, '' for an icon that isn't an emoji (an image or a Notion icon), null for none.
+    icon: page?.icon ? (page.icon.type === 'emoji' ? page.icon.emoji : '') : null,
     hasPortfolioBox: Object.hasOwn(props, 'On portfolio'),
     onPortfolio: props['On portfolio']?.checkbox === true,
     'Portfolio ID': plainText(props['Portfolio ID']?.rich_text).trim(),
@@ -76,6 +79,11 @@ export function createNotion({ token, databaseId = projectsDatabaseId(), fetch: 
     return readPage(await api('PATCH', `/pages/${pageId}`, { signal, body: { properties: toProperties(values) } }));
   }
 
+  // Sets the page emoji, or removes it when emoji is empty.
+  async function setIcon(pageId, emoji, { signal } = {}) {
+    return readPage(await api('PATCH', `/pages/${pageId}`, { signal, body: { icon: emoji ? { type: 'emoji', emoji } : null } }));
+  }
+
   // Blocks inside a page. The hub only appends its own blocks and edits those it made.
   async function listChildren(pageId, { signal } = {}) {
     const blocks = [];
@@ -104,6 +112,11 @@ export function createNotion({ token, databaseId = projectsDatabaseId(), fetch: 
     return api('PATCH', `/blocks/${blockId}`, { signal, body: payload });
   }
 
+  // Moves a block to Notion's trash (restorable there). Only used on blocks the hub wrote.
+  async function trashBlock(blockId, { signal } = {}) {
+    return api('PATCH', `/blocks/${blockId}`, { signal, body: { archived: true } });
+  }
+
   // A plain page under another page (not a database row), for reports.
   async function createChildPage(parentPageId, title, children, { signal } = {}) {
     const page = await createApi('POST', '/pages', {
@@ -112,5 +125,5 @@ export function createNotion({ token, databaseId = projectsDatabaseId(), fetch: 
     return { id: String(page.id), url: page.url ?? null };
   }
 
-  return { listPages, createPage, getPage, updatePage, createChildPage, listChildren, appendChildren, getBlock, updateBlock };
+  return { listPages, createPage, getPage, updatePage, setIcon, createChildPage, listChildren, appendChildren, getBlock, updateBlock, trashBlock };
 }

@@ -256,6 +256,12 @@ export function createNotionProjectsJob({ connections, openLedger, fetch: fetchI
         return;
       }
       const current = await notion.getPage(change.targetId);
+      if (change.field === 'icon') {
+        // An icon chosen by Project details (src/details/look.mjs).
+        if (current.icon !== change.after) throw new Error('This icon was changed in Notion since, so it was left as it is.');
+        await notion.setIcon(change.targetId, change.before ?? '');
+        return;
+      }
       if ((current[change.field] ?? '') !== (change.after ?? '')) throw new Error('This field was changed in Notion since, so it was left as it is.');
       await notion.updatePage(change.targetId, { [change.field]: change.before ?? '' });
     } catch (error) {

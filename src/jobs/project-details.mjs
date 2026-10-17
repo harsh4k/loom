@@ -3,18 +3,22 @@
 // They go into a "Project details" section the hub adds at the end of the page and only ever
 // rewrites itself. If you edit or delete that section, the hub leaves that page alone for good.
 // Output that fails the checks in src/details/check.mjs is skipped, never written.
+// Every run then gives pages without an icon or an opening paragraph both (src/details/look.mjs).
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { checkDetails, SCHEMA } from '../details/check.mjs';
+import { createPageLook, describeLook } from '../details/look.mjs';
+import { blockText, HEADING, introBlock, rich, SECTION_TARGET, sectionBlocks, sectionMatches, sectionText } from '../details/section.mjs';
+import { isRetryable } from '../errors.mjs';
 import { canonicalRepoUrl, createGitHub } from '../github/repos.mjs';
 import { buildTechStack } from '../github/stack.mjs';
 import { HttpStatusError } from '../http.mjs';
 import { UNDONE } from '../ledger.mjs';
-import { createNotion, plainText } from '../notion/client.mjs';
+import { createNotion } from '../notion/client.mjs';
 import { hubValue, mayRewrite, TARGET as PAGE_TARGET } from './notion-projects.mjs';
 
 export const JOB_ID = 'project-details';
-export const TARGET = 'notion-section';
-export const HEADING = 'Project details';
+export const TARGET = SECTION_TARGET;
+export { HEADING, sectionText };
 export const PAGES_PER_RUN = 8;
 const README_LIMIT = 8000;
 
@@ -27,19 +31,6 @@ const SYSTEM = [
   'features: 3 to 6 short phrases (under 120 characters each), each a concrete thing the project does. No links, no brackets, no markdown.',
 ].join('\n');
 
-export const sectionText = ({ description, features }) => ({ description, features: features.map((feature) => `• ${feature}`).join('\n') });
-
-const rich = (content) => [{ type: 'text', text: { content: String(content).slice(0, 2000) } }];
-function sectionBlocks(details) {
-  const text = sectionText(details);
-  return [
-    { object: 'block', type: 'divider', divider: {} },
-    { object: 'block', type: 'heading_3', heading_3: { rich_text: rich(HEADING) } },
-    { object: 'block', type: 'paragraph', paragraph: { rich_text: rich(text.description) } },
-    { object: 'block', type: 'paragraph', paragraph: { rich_text: rich(text.features) } },
-  ];
-}
-const blockText = (block) => plainText(block?.[block.type]?.rich_text);
 
 async function readState(file) {
   try {
@@ -82,10 +73,7 @@ export function createProjectDetailsJob({ connections, openLedger, askJson, stat
     if (last === UNDONE || !Array.isArray(last?.blockIds) || last.blockIds.length !== 4) return { kind: 'hands-off', why: 'its details were undone' };
     const blocks = await Promise.all(last.blockIds.map((id) => notion.getBlock(id, { signal })));
     if (blocks.some((block) => !block)) return { kind: 'hands-off', why: 'you removed its Project details section' };
-    const expected = sectionText(last);
-    if (blockText(blocks[1]) !== HEADING || blockText(blocks[2]) !== expected.description || blockText(blocks[3]) !== expected.features) {
-      return { kind: 'hands-off', why: 'you edited its Project details section' };
-    }
+    if (!sectionMatches(blocks, last)) return { kind: 'hands-off', why: 'you edited its Project details section' };
     return { kind: 'existing', last };
   }
 
@@ -109,8 +97,6 @@ export function createProjectDetailsJob({ connections, openLedger, askJson, stat
         .map((page) => ({ page, repo: repoByUrl.get(canonicalRepoUrl(page.githubUrl)) }))
         .filter(({ repo, page }) => repo && state.pages[page.id] !== repo.pushedAt)
         .sort((a, b) => String(b.repo.pushedAt).localeCompare(String(a.repo.pushedAt)));
-      if (!due.length) return { summary: 'Project details: no project changed since the last run.' };
-
       const written = [];
       const skipped = [];
       for (const { page, repo } of due.slice(0, PAGES_PER_RUN)) {
@@ -152,8 +138,16 @@ export function createProjectDetailsJob({ connections, openLedger, askJson, stat
               await notion.updateBlock(blockIds[2], { paragraph: { rich_text: rich(text.description) } }, { signal });
               await notion.updateBlock(blockIds[3], { paragraph: { rich_text: rich(text.features) } }, { signal });
             } else {
-              const made = await notion.appendChildren(page.id, sectionBlocks(details), { signal });
-              blockIds = made.map((block) => block.id);
+              // A page with an empty body also gets its intro, so its gallery card isn't blank.
+              const body = await notion.listChildren(page.id, { signal });
+              const intro = !body.length && ledger.lastWritten(TARGET, page.id, 'intro') === undefined
+                ? ledger.begin({ runId, jobId: JOB_ID, target: TARGET, targetId: page.id, field: 'intro', label: `${name}: intro`, before: null, after: { text: details.description } })
+                : null;
+              try {
+                const made = await notion.appendChildren(page.id, [...(intro ? [introBlock(details.description)] : []), ...sectionBlocks(details)], { signal });
+                blockIds = made.slice(-4).map((block) => block.id);
+                if (intro) ledger.applied(intro.id, { after: { text: details.description, blockId: made[0].id } });
+              } catch (error) { if (intro) ledger.failed(intro.id, error.message); throw error; }
             }
             ledger.applied(change.id, { after: { ...details, blockIds } });
           } catch (error) { ledger.failed(change.id, error.message); throw error; }
@@ -172,7 +166,13 @@ export function createProjectDetailsJob({ connections, openLedger, askJson, stat
       }
       const later = due.length > PAGES_PER_RUN ? ` ${due.length - PAGES_PER_RUN} more next run.` : '';
       const skippedText = skipped.length ? ` Skipped ${skipped.join('; ')}.` : '';
-      return { summary: `Project details: updated ${written.length ? written.join(', ') : 'none'}.${skippedText}${later}`.slice(0, 480) };
+
+      let look;
+      try {
+        look = await createPageLook({ notion, ledger, askJson, runId, jobId: JOB_ID, signal, report }).run(pages, { isRetryable });
+      } catch (error) { throw await explain(error); }
+      const detailsText = due.length ? `updated ${written.length ? written.join(', ') : 'none'}.${skippedText}${later}` : 'no project changed since the last run.';
+      return { summary: `Project details: ${detailsText}${describeLook(look)}`.slice(0, 600) };
     } finally {
       ledger.close();
     }
@@ -180,17 +180,24 @@ export function createProjectDetailsJob({ connections, openLedger, askJson, stat
 
   // Puts the previous details back, if the section still shows what this change wrote.
   async function undo(change) {
+    if (change.field === 'intro') return undoIntro(change);
     if (change.before === null) throw new Error('A new section can’t be put back. Delete it in Notion if you don’t want it; the hub then leaves that page alone.');
     const notion = createNotion({ token: connections().token('notion'), fetch: fetchImpl });
     const blockIds = change.after?.blockIds ?? [];
     const blocks = await Promise.all(blockIds.map((id) => notion.getBlock(id)));
-    const expected = sectionText(change.after);
-    if (blocks.length !== 4 || blocks.some((block) => !block) || blockText(blocks[2]) !== expected.description || blockText(blocks[3]) !== expected.features) {
-      throw new Error('The section was changed in Notion since, so it was left as it is.');
-    }
+    if (!sectionMatches(blocks, change.after)) throw new Error('The section was changed in Notion since, so it was left as it is.');
     const text = sectionText(change.before);
     await notion.updateBlock(blockIds[2], { paragraph: { rich_text: rich(text.description) } });
     await notion.updateBlock(blockIds[3], { paragraph: { rich_text: rich(text.features) } });
+  }
+
+  // An intro the hub added goes to the trash; one that replaced a placeholder gets it back.
+  async function undoIntro(change) {
+    const notion = createNotion({ token: connections().token('notion'), fetch: fetchImpl });
+    const block = change.after?.blockId ? await notion.getBlock(change.after.blockId) : null;
+    if (!block || blockText(block) !== change.after.text) throw new Error('The intro was changed in Notion since, so it was left as it is.');
+    if (typeof change.before === 'string') await notion.updateBlock(block.id, { paragraph: { rich_text: rich(change.before) } });
+    else await notion.trashBlock(block.id);
   }
 
   return { run, undo };
