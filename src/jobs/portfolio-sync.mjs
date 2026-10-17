@@ -3,13 +3,18 @@
 // in config/profile.json).
 // - A ticked project that isn't on the site yet is added at the end, if it has an image at
 //   <portfolio.imagesDir>/<id>.webp. Its Portfolio ID is written back to Notion so the two stay linked.
+//   With `cards` set up, a missing image is made from a screenshot of the project's live site, and
+//   the new entry's summary, role, problem and outcome are written by Qwen in the site's voice
+//   (src/portfolio/card.mjs).
 // - A project linked by Portfolio ID and then unticked is removed from the site.
 // - Entries already on the site are never edited, and entries with no Notion link are kept.
 // The file is the only thing written, through one commit; Cloudflare Pages rebuilds from it.
+import path from 'node:path';
 import { canonicalRepoUrl, createGitHub } from '../github/repos.mjs';
 import { HttpStatusError } from '../http.mjs';
 import { createNotion } from '../notion/client.mjs';
 import { getProfile, need } from '../profile.mjs';
+import { captureCard, voiceExamples, writeEntry } from '../portfolio/card.mjs';
 
 export const JOB_ID = 'portfolio-sync';
 export const TARGET = 'portfolio-file';
@@ -97,7 +102,55 @@ export function planPortfolio({ entries, pages, images }) {
   return { next: [...kept, ...added], added, removed, links, notes };
 }
 
-export function createPortfolioSyncJob({ connections, openLedger, fetch: fetchImpl = fetch, now = () => new Date() }) {
+const fullNameOf = (url) => /github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+?)(?:\.git)?\/?$/i.exec(url ?? '')?.[1] ?? null;
+const ENTRY_ORDER = ['id', 'order', 'title', 'code', 'url', 'image', 'summary', 'role', 'stack', 'repo', 'problem', 'outcome'];
+const ordered = (entry) => Object.fromEntries(ENTRY_ORDER.filter((key) => entry[key] !== undefined).map((key) => [key, entry[key]]));
+
+// cards: { askJson, browserPath, ffmpeg, run, workRoot } lets the job make missing card images
+// and write new entries' words; without it, projects without an image are skipped as before.
+export function createPortfolioSyncJob({ connections, openLedger, fetch: fetchImpl = fetch, now = () => new Date(), cards = null }) {
+  // The live site of a project: its GitHub repo's website field.
+  async function homepageOf(github, page, signal) {
+    const fullName = fullNameOf(page.githubUrl);
+    if (!fullName) return null;
+    const repo = await github.getRepo(fullName, { signal }).catch(() => null);
+    const homepage = typeof repo?.homepage === 'string' ? repo.homepage.trim() : '';
+    return /^https:\/\//.test(homepage) ? homepage : null;
+  }
+
+  // Takes card pictures for ticked projects that aren't on the site and have none yet.
+  async function makeImages(ready, signal, report) {
+    const made = new Map(); // file name -> { bytes, homepage }
+    if (!cards?.browserPath) return made;
+    const onSite = new Set(ready.entries.map((entry) => entry.id));
+    const wanted = ready.pages.filter((page) => page.onPortfolio && !onSite.has(page['Portfolio ID'] || slug(page.name)))
+      .filter((page) => !ready.images.has(`${page['Portfolio ID'] || slug(page.name)}.webp`))
+      .slice(0, CAPS.additions);
+    for (const page of wanted) {
+      const id = page['Portfolio ID'] || slug(page.name);
+      const homepage = await homepageOf(ready.github, page, signal);
+      if (!homepage) continue;
+      report(`Taking a card picture of ${homepage}.`);
+      const bytes = await captureCard({ url: homepage, browserPath: cards.browserPath, ffmpeg: cards.ffmpeg, run: cards.run, workDir: path.join(cards.workRoot, id), signal })
+        .catch((error) => { if (signal?.aborted) throw error; return null; });
+      if (bytes) made.set(`${id}.webp`, { bytes, homepage });
+    }
+    return made;
+  }
+
+  // Fills a new entry's words and links the way the site's own entries are written.
+  async function finishEntry(entry, page, ready, made, signal, report) {
+    const homepage = made.get(`${entry.id}.webp`)?.homepage ?? (cards ? await homepageOf(ready.github, page, signal) : null);
+    if (homepage) { entry.repo = entry.url; entry.url = homepage; }
+    if (!cards?.askJson) return entry;
+    report(`Writing the ${entry.title} card.`);
+    const fullName = fullNameOf(page.githubUrl);
+    const readme = fullName ? await ready.github.readme(fullName, { signal }).catch(() => null) : null;
+    const written = await writeEntry({ page, readme: readme ?? '', examples: voiceExamples(ready.entries), askJson: cards.askJson, signal })
+      .catch((error) => { if (signal?.aborted) throw error; return { entry: null }; });
+    return ordered({ ...entry, ...(written.entry ?? {}) });
+  }
+
   async function read(signal) {
     const notionKey = connections().token('notion');
     const githubKey = connections().token('github');
@@ -145,6 +198,8 @@ export function createPortfolioSyncJob({ connections, openLedger, fetch: fetchIm
       let ready;
       try { ready = await read(signal); } catch (error) { throw explain(error); }
       if (ready.skip) return { summary: ready.skip };
+      const made = await makeImages(ready, signal, report);
+      for (const name of made.keys()) ready.images.add(name);
       const plan = planPortfolio(ready);
       if (plan.removed.length > CAPS.removals || plan.added.length > CAPS.additions) {
         throw new Error(`Stopped before writing: this run would remove ${plan.removed.length} and add ${plan.added.length} projects, over the limit of ${CAPS.removals} and ${CAPS.additions}. Nothing was changed.`);
@@ -160,6 +215,23 @@ export function createPortfolioSyncJob({ connections, openLedger, fetch: fetchIm
 
       if (!plan.added.length && !plan.removed.length) {
         return { summary: `Portfolio sync: the site already matches Notion (${ready.entries.length} projects).${notes}`.slice(0, 480) };
+      }
+      // New cards: words in the site's voice, then their pictures, before the list that shows them.
+      const pageFor = (entry) => ready.pages.find((page) => (page['Portfolio ID'] || slug(page.name)) === entry.id);
+      for (let i = 0; i < plan.next.length; i += 1) {
+        const entry = plan.next[i];
+        if (!plan.added.includes(entry)) continue;
+        const finished = await finishEntry({ ...entry }, pageFor(entry), ready, made, signal, report);
+        plan.next[i] = finished;
+        plan.added[plan.added.indexOf(entry)] = finished;
+      }
+      for (const entry of plan.added) {
+        const picture = made.get(`${entry.id}.webp`);
+        if (!picture) continue;
+        report(`Adding the ${entry.title} card picture to your portfolio.`);
+        try {
+          await ready.github.putContent(ready.repo, `${portfolioTarget().images}/${entry.id}.webp`, { bytes: picture.bytes, message: `Portfolio: card picture for ${entry.title} (by the automation hub)`, signal });
+        } catch (error) { throw explain(error); }
       }
       const text = `${JSON.stringify(plan.next, null, 2)}\n`;
       const parts = [

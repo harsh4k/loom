@@ -104,10 +104,12 @@ export function createGitHub({ token = null, user = githubUser(), fetch: fetchIm
   }
 
   // Commits one file. `sha` is the version being replaced, so a file changed meanwhile is refused.
-  async function putContent(fullName, filePath, { text, sha, message, signal }) {
+  // `bytes` commits a binary file (an image) instead of `text`.
+  async function putContent(fullName, filePath, { text, bytes, sha, message, signal }) {
     if (!token) throw new Error('Add a GitHub key on the Accounts page to let the hub update your portfolio.');
+    const content = bytes ? Buffer.from(bytes).toString('base64') : Buffer.from(text, 'utf8').toString('base64');
     const body = await api('PUT', `/repos/${fullName}/contents/${filePath}`, {
-      signal, body: { message, content: Buffer.from(text, 'utf8').toString('base64'), ...(sha ? { sha } : {}) },
+      signal, body: { message, content, ...(sha ? { sha } : {}) },
     });
     return { sha: body?.content?.sha ?? null, commit: body?.commit?.sha ?? null, url: body?.commit?.html_url ?? null };
   }

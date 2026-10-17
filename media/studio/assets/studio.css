@@ -1,0 +1,57 @@
+/* Loom studio: the stage every film and poster is built on. Every colour and face comes from the
+   film's tokens (set on #root by engine.js); nothing here is a raw colour except the fallbacks. */
+:root {
+  --bg: #f4f2ee; --surface: #e8e5df; --ink: #161514; --muted: #6b6762; --accent: #1a4be0; --accent-ink: #ffffff;
+  --field-bg: #161514; --field-ink: #f4f2ee;
+  --display: system-ui, sans-serif; --text: system-ui, sans-serif; --mono: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  --display-weight: 700; --text-weight: 400; --tracking: -0.04em; --leading: 0.95; --case: none;
+  --m: 72px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); }
+body { color: var(--ink); font-family: var(--text); font-weight: var(--text-weight); -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
+#root { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+#stage { position: absolute; inset: 0; }
+#wipe { position: absolute; inset: 0; background: var(--field-bg); transform: translateY(101%); z-index: 50; }
+
+.shot { position: absolute; inset: 0; overflow: hidden; visibility: hidden; background: var(--bg); }
+.shot.on-field { background: var(--field-bg); color: var(--field-ink); }
+.shot.on-surface { background: var(--surface); }
+
+/* Type. Display lines are set tight; text is calm. */
+.display { font-family: var(--display); font-weight: var(--display-weight); letter-spacing: var(--tracking); line-height: var(--leading); text-transform: var(--case); margin: 0; }
+.text { font-family: var(--text); font-weight: var(--text-weight); line-height: 1.32; letter-spacing: -0.01em; margin: 0; }
+.muted { color: var(--muted); }
+.on-field .muted { color: var(--field-ink); opacity: 0.72; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* A word (or letter) that rises from behind its own baseline. */
+.mask { display: inline-block; overflow: hidden; vertical-align: top; padding: 0.06em 0.02em 0.14em; margin: -0.06em -0.02em -0.14em; }
+.mask > span { display: inline-block; white-space: pre; will-change: transform; }
+.word { display: inline-block; white-space: nowrap; }
+
+/* Placement helpers on the shared margin. */
+.pin-tl { position: absolute; left: var(--m); top: var(--m); right: var(--m); }
+.pin-bl { position: absolute; left: var(--m); bottom: var(--m); right: var(--m); }
+.pin-ml { position: absolute; left: var(--m); right: var(--m); top: 50%; transform: translateY(-50%); }
+.corner-tr { position: absolute; right: var(--m); top: var(--m); text-align: right; }
+.corner-br { position: absolute; right: var(--m); bottom: var(--m); text-align: right; }
+
+/* Monument: the name as architecture. */
+.monument-name { position: absolute; left: var(--m); white-space: nowrap; }
+.monument-name.bleed { left: -0.04em; }
+
+/* Real pictures of the product. */
+.frame { position: absolute; overflow: hidden; background: var(--surface); }
+.frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0%; display: block; }
+
+/* A real terminal is the one place monospace belongs. */
+.term { position: absolute; left: var(--m); right: var(--m); top: 50%; transform: translateY(-50%); background: var(--field-bg); color: var(--field-ink);
+  font-family: var(--mono); line-height: 1.5; }
+.term .prompt { color: var(--accent); }
+.term .out { color: var(--field-ink); opacity: 0.74; white-space: pre-wrap; }
+.term .cursor { display: inline-block; width: 0.6em; height: 1.05em; vertical-align: -0.15em; background: var(--field-ink); margin-left: 4px; }
+
+/* Lists and catalogues: order shown by position and size, never by numbers. */
+.list-item { display: block; }
+.marquee-row { position: absolute; left: 0; white-space: nowrap; }

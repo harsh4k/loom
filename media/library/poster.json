@@ -1,0 +1,14 @@
+{
+  "_about": "Poster inspiration for Loom's still images (1080x1350). Each idea maps to the studio's end card: layout (monument, statement, screen) and tone (bg, surface, field). The director picks one per project that suits its direction; the inspiration fetcher adds more over time.",
+  "ideas": [
+    { "id": "name-wall", "name": "Name wall", "idea": "The name fills the bottom of the poster edge to edge, one plain line above it.", "from": "Swiss concert posters", "tones": ["bold", "editorial"], "layout": "monument", "tone": "bg" },
+    { "id": "name-on-field", "name": "Name on a field", "idea": "A solid field of colour with the name huge at the foot, nothing else competing.", "from": "Exhibition posters", "tones": ["bold", "playful"], "layout": "monument", "tone": "field" },
+    { "id": "quiet-name", "name": "Quiet name", "idea": "Pale surface, the name set calmly, generous empty space above.", "from": "Gallery invitation cards", "tones": ["quiet", "luxury"], "layout": "monument", "tone": "surface" },
+    { "id": "headline-front-page", "name": "Front page", "idea": "The one-line promise set as a big headline at the top, the name signed at the foot.", "from": "Newspaper front pages", "tones": ["editorial", "bold"], "layout": "statement", "tone": "bg" },
+    { "id": "manifesto-card", "name": "Manifesto card", "idea": "The promise as a statement on a coloured field, like a protest placard.", "from": "Placards and manifesto posters", "tones": ["bold", "playful"], "layout": "statement", "tone": "field" },
+    { "id": "book-cover", "name": "Book cover", "idea": "Calm statement on a surface tone, like a literary book cover.", "from": "Literary book covers", "tones": ["quiet", "editorial", "luxury"], "layout": "statement", "tone": "surface" },
+    { "id": "product-hero", "name": "Product hero", "idea": "The real product screen framed large, name and line set underneath like a catalogue plate.", "from": "Product catalogue plates", "tones": ["technical", "quiet"], "layout": "screen", "tone": "bg" },
+    { "id": "screen-on-surface", "name": "Screen on surface", "idea": "The product screen on a soft surface tone, like a print mounted on card.", "from": "Portfolio print mounts", "tones": ["quiet", "luxury", "editorial"], "layout": "screen", "tone": "surface" },
+    { "id": "screen-on-field", "name": "Screen on a field", "idea": "The product screen floating on a strong field of colour, name in the field ink.", "from": "App store feature banners", "tones": ["bold", "playful", "technical"], "layout": "screen", "tone": "field" }
+  ]
+}

@@ -43,8 +43,9 @@ export const AUTOMATIONS = Object.freeze([
     name: 'Portfolio sync',
     app: 'portfolio',
     status: 'active',
-    description: 'Adds projects you tick “On portfolio” in Notion to your portfolio’s Work section, and removes ones you untick. Entries already on the site are never edited.',
+    description: 'Adds projects you tick “On portfolio” in Notion to your portfolio’s Work section, with a picture of the live site and words in your site’s voice, and removes ones you untick. Entries already on the site are never edited.',
     schedule: { days: [1], time: '10:00', label: 'Mondays at 10:00 AM' },
+    usesModel: true,
     needs: ['notion.projectsDatabaseId', 'portfolio.repo', 'portfolio.file', 'portfolio.imagesDir'],
   },
   {
@@ -55,6 +56,16 @@ export const AUTOMATIONS = Object.freeze([
     description: 'Writes one Notion page under your report page each Sunday: what ran, what failed, every change the hub made, and READMEs that look out of date.',
     schedule: { days: [0], time: '19:00', label: 'Sundays at 7:00 PM' },
     needs: ['github.user', 'notion.reportPageId'],
+  },
+  {
+    id: 'design-inspo',
+    name: 'Design inspiration',
+    app: 'linkedin',
+    status: 'active',
+    description: 'Studies new sites from public web-design galleries with Qwen and adds their palettes, motion ideas and poster ideas to the library Loom’s studio designs post videos from.',
+    schedule: { days: [6], time: '11:00', label: 'Saturdays at 11:00 AM' },
+    usesModel: true,
+    timeLimitMs: 30 * 60 * 1000,
   },
 ].map((item) => Object.freeze({ ...item })));
 

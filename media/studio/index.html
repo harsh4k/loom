@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1350" />
+    <title>Loom studio</title>
+    <link rel="stylesheet" href="assets/fonts.css" />
+    <link rel="stylesheet" href="assets/studio.css" />
+    <script src="assets/gsap.min.js"></script>
+  </head>
+  <body>
+    <div id="root" data-composition-id="film" data-start="0" data-duration="10" data-width="1080" data-height="1350">
+      <div id="stage"></div>
+      <div id="wipe" aria-hidden="true"></div>
+    </div>
+    <script src="assets/film.js"></script>
+    <script src="assets/engine.js"></script>
+    <script>
+      // engine.js builds the film's timeline synchronously; register it for HyperFrames.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["film"] = window.__loomTimeline;
+    </script>
+  </body>
+</html>

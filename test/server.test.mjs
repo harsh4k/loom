@@ -261,7 +261,7 @@ test('lists automations and marks only registered jobs as active', async () => {
     const response = await fetch(`${baseUrl}/api/automations`);
     assert.equal(response.status, 200);
     const { automations } = await response.json();
-    assert.deepEqual(automations.filter((item) => item.status === 'active').map((item) => item.id), ['linkedin-draft', 'notion-projects', 'project-details', 'portfolio-sync', 'weekly-report']);
+    assert.deepEqual(automations.filter((item) => item.status === 'active').map((item) => item.id), ['linkedin-draft', 'notion-projects', 'project-details', 'portfolio-sync', 'weekly-report', 'design-inspo']);
     assert.equal((await fetch(`${baseUrl}/api/automations`, { method: 'POST' })).status, 405);
   });
 });

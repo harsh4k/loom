@@ -23,6 +23,7 @@ export function normalizeProfile(raw = {}) {
   const notion = source.notion ?? {};
   const portfolio = source.portfolio ?? {};
   const linkedin = source.linkedin ?? {};
+  const design = source.design ?? {};
   return {
     name: text(source.name),
     timeZone: validTimeZone(text(source.timeZone)) ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC',
@@ -35,6 +36,8 @@ export function normalizeProfile(raw = {}) {
       audience: text(linkedin.audience) || 'software engineering recruiters',
       avoid: list(linkedin.avoid),
     },
+    // The design-taste library Loom's art director draws on; empty means the default skill folder.
+    design: { tasteDir: text(design.tasteDir) },
   };
 }
 

@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmod, lstat, mkdir, statfs } from 'node:fs/promises';
 import path from 'node:path';
 import { createLinkedInDraftJob } from './jobs/linkedin-draft.mjs';
@@ -6,16 +6,18 @@ import { createLinkedInPostingJob } from './jobs/linkedin-post.mjs';
 import { createNotionProjectsJob } from './jobs/notion-projects.mjs';
 import { createPortfolioSyncJob } from './jobs/portfolio-sync.mjs';
 import { createProjectDetailsJob } from './jobs/project-details.mjs';
+import { createDesignInspoJob } from './jobs/design-inspo.mjs';
 import { createWeeklyReportJob } from './jobs/weekly-report.mjs';
 import { createModel } from './model.mjs';
 import { createLinkedInAccount } from './linkedin/account.mjs';
 import { createPublisher } from './linkedin/publish.mjs';
-import { createMediaRenderer } from './media/render.mjs';
+import { createMediaRenderer, findBrowser, projectReadme, runProcess } from './media/render.mjs';
 import { AUTOMATIONS } from './automations.mjs';
 import { backupIfDue, lastBackupAt } from './backup.mjs';
 import { createConnections } from './connections.mjs';
 import { openLedger } from './ledger.mjs';
 import { createNotifier } from './notify.mjs';
+import { getProfile } from './profile.mjs';
 import { createOllamaKeeper } from './ollama.mjs';
 import { createQueue } from './queue.mjs';
 import { buildJobs } from './registry.mjs';
@@ -40,7 +42,12 @@ const PRIVATE_FILES = [...SQLITE_FILES, LINKEDIN_ACCOUNT_FILE, LINKEDIN_LEDGER_F
 export function createLinkedInJobs({ dataDir = DATA_DIR, draftJob = createLinkedInDraftJob(), fetch: fetchImpl = fetch } = {}) {
   const account = createLinkedInAccount({ file: path.join(dataDir, LINKEDIN_ACCOUNT_FILE), redirectUri: LINKEDIN_REDIRECT_URI, fetch: fetchImpl });
   const publish = createPublisher({ account, ledgerFile: path.join(dataDir, LINKEDIN_LEDGER_FILE), fetch: fetchImpl });
-  const renderMedia = createMediaRenderer({ workRoot: path.join(dataDir, 'media-work') });
+  // Loom's studio art-directs each project's film with the local model; see src/media/produce.mjs.
+  const githubToken = () => { try { return createConnections({ file: path.join(dataDir, CONNECTIONS_FILE) }).token('github'); } catch { return null; } };
+  const renderMedia = createMediaRenderer({
+    workRoot: path.join(dataDir, 'media-work'),
+    studio: { askJson: createModel(), dataDir, tasteDir: getProfile().design.tasteDir || undefined, readme: projectReadme({ token: githubToken, fetch: fetchImpl }) },
+  });
   return { account, job: createLinkedInPostingJob({ draftJob, publish, renderMedia }) };
 }
 
@@ -57,14 +64,20 @@ export function createHubJobs({
     connections: () => connections, openLedger: () => openLedger(path.join(dataDir, DATABASE)),
     askJson: createModel(), stateFile: path.join(dataDir, PROJECT_DETAILS_FILE), fetch: fetchImpl,
   });
-  const portfolioSync = createPortfolioSyncJob({ connections: () => connections, openLedger: () => openLedger(path.join(dataDir, DATABASE)), fetch: fetchImpl });
+  // New portfolio cards get a picture of the live site and words written by Qwen in the site's voice.
+  const portfolioCards = {
+    askJson: createModel(), browserPath: findBrowser(), ffmpeg: process.env.HYPERFRAMES_FFMPEG_PATH || 'ffmpeg',
+    run: (command, args, options) => runProcess(spawn, command, args, options), workRoot: path.join(dataDir, 'portfolio-work'),
+  };
+  const portfolioSync = createPortfolioSyncJob({ connections: () => connections, openLedger: () => openLedger(path.join(dataDir, DATABASE)), fetch: fetchImpl, cards: portfolioCards });
   const weeklyReport = createWeeklyReportJob({
     connections: () => connections, openLedger: () => openLedger(path.join(dataDir, DATABASE)), fetch: fetchImpl,
     readRuns: () => { const store = openStore(path.join(dataDir, DATABASE)); try { return store.getSnapshot().runs; } finally { store.close(); } },
   });
+  const designInspo = createDesignInspoJob({ askJson: createModel(), dataDir, fetch: fetchImpl });
   const jobs = buildJobs({
     'linkedin-draft': linkedin.job, 'notion-projects': notionProjects, 'project-details': projectDetails,
-    'portfolio-sync': portfolioSync, 'weekly-report': weeklyReport,
+    'portfolio-sync': portfolioSync, 'weekly-report': weeklyReport, 'design-inspo': designInspo,
   }, { automations: AUTOMATIONS, ollama });
   return {
     jobs, linkedin: linkedin.account, ollama, notionProjects,

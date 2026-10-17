@@ -1,11 +1,15 @@
-// Renders a post's video and poster image on this PC with HyperFrames (media/post), using
-// real screenshots of the project. Nothing here calls a paid service.
+// Renders a post's video and poster image on this PC with HyperFrames, using real screenshots of
+// the project. With the local model available, Loom's studio (produce.mjs) art-directs and
+// storyboards a film for the project; the single media/post template is the fallback.
+// Nothing here calls a paid service.
 import { spawn as systemSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { cp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createGitHub } from '../github/repos.mjs';
 import { getProfile } from '../profile.mjs';
+import { createStudio } from './produce.mjs';
 
 const MEDIA_ROOT = path.resolve(import.meta.dirname, '../../media');
 export const TEMPLATE_DIR = path.join(MEDIA_ROOT, 'post');
@@ -50,6 +54,16 @@ export function findProject(projects, topic) {
   return key ? projects[key] : null;
 }
 
+// Reads a project's README from the GitHub repo its link names, for the studio's facts.
+export function projectReadme({ token = () => null, fetch: fetchImpl = fetch } = {}) {
+  return async (project, { signal } = {}) => {
+    const fullName = /^(?:https?:\/\/)?github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+?)(?:\.git)?\/?$/i.exec(project?.link ?? '')?.[1];
+    if (!fullName) return null;
+    const github = createGitHub({ token: token(), user: fullName.split('/')[0], fetch: fetchImpl });
+    return github.readme(fullName, { signal });
+  };
+}
+
 // The composition's variables are flat strings; stats are "value|label" lines.
 export function compositionVariables(project, { author, shot }) {
   return {
@@ -69,7 +83,7 @@ export function compositionVariables(project, { author, shot }) {
   };
 }
 
-function runProcess(spawn, command, args, { signal, timeoutMs, env }) {
+export function runProcess(spawn, command, args, { signal, timeoutMs, env }) {
   return new Promise((resolve, reject) => {
     let output = '';
     let settled = false;
@@ -116,8 +130,13 @@ export function createMediaRenderer({
   spawn = systemSpawn,
   fetch: fetchImpl = fetch,
   renderTimeoutMs = RENDER_TIMEOUT_MS,
+  studio = null, // { askJson, dataDir, tasteDir? } turns on Loom's studio
 } = {}) {
   if (!workRoot) throw new TypeError('workRoot is required');
+  const run = (command, args, options) => runProcess(spawn, command, args, options);
+  const produce = studio?.askJson && studio?.dataDir
+    ? createStudio({ ...studio, hyperframesBin, browserPath, run, author, fetch: fetchImpl, renderTimeoutMs })
+    : null;
 
   async function captureSite(url, target, signal, workDir) {
     if (!browserPath || !/^https:\/\//.test(url)) return false;
@@ -157,7 +176,7 @@ export function createMediaRenderer({
   }
 
   // Renders <outBase>.mp4 and its final frame as <outBase>.png. Returns null for an unknown project.
-  return async function renderMedia({ topic, outBase, signal, report = () => {} }) {
+  return async function renderMedia({ topic, outBase, draft = '', signal, report = () => {} }) {
     const project = findProject(loadProjects(projectsFile), topic);
     if (!project) return null;
     if (!existsSync(hyperframesBin)) throw new Error('HyperFrames is not installed. Run npm ci in the media folder.');
@@ -168,6 +187,16 @@ export function createMediaRenderer({
       await cp(templateDir, workDir, { recursive: true, filter: (source) => !source.includes(`${path.sep}.hyperframes`) && !source.includes(`${path.sep}renders`) });
       report(`Capturing ${project.name} for the post video.`);
       const shot = await screenshot(project, workDir, signal, notes);
+      if (produce) {
+        try {
+          const images = shot ? { [shot.endsWith('shot.png') ? 'shot' : 'readme']: path.join(workDir, shot) } : {};
+          const made = await produce({ project, images, outBase, workRoot: path.join(workDir, 'studio'), draft, signal, report });
+          return { ...made, note: [made.note, notes.length ? `Pictures: ${notes.join(' and ')}.` : ''].filter(Boolean).join(' ') };
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          notes.push(`the studio failed (${String(error?.message ?? error).slice(0, 160)})`);
+        }
+      }
       const variablesFile = path.join(workDir, 'variables.json');
       await writeFile(variablesFile, JSON.stringify(compositionVariables(project, { author, shot })));
 

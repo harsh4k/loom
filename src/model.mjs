@@ -5,7 +5,9 @@ import { OLLAMA_URL } from './ollama.mjs';
 export const MODEL = 'qwen3.5:9b-q4_K_M';
 
 export function createModel({ url = OLLAMA_URL, model = MODEL, fetch: fetchImpl = fetch, timeoutMs = 5 * 60 * 1000 } = {}) {
-  return async function askJson({ system, prompt, schema, signal }) {
+  // images: base64 pictures for Qwen's vision (a contact sheet of frames, say).
+  // temperature: higher for creative writing, low (the default) for facts.
+  return async function askJson({ system, prompt, schema, signal, images, temperature = 0.2 }) {
     const limit = AbortSignal.timeout(timeoutMs);
     let response;
     try {
@@ -14,8 +16,8 @@ export function createModel({ url = OLLAMA_URL, model = MODEL, fetch: fetchImpl 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model, stream: false, think: false, format: schema,
-          options: { temperature: 0.2, num_ctx: 8192 },
-          messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+          options: { temperature, num_ctx: 8192 },
+          messages: [{ role: 'system', content: system }, { role: 'user', content: prompt, ...(images?.length ? { images } : {}) }],
         }),
         signal: signal ? AbortSignal.any([signal, limit]) : limit,
       });

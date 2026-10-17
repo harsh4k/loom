@@ -8,9 +8,10 @@ export function mediaKindFor(date) {
   return day === 4 ? 'image' : 'video';
 }
 
-async function draftProject(draftPath) {
-  try { return /^- Project:[ \t]*(.+)$/m.exec(await readFile(draftPath, 'utf8'))?.[1]?.trim() ?? ''; } catch { return ''; }
+async function readDraft(draftPath) {
+  try { return await readFile(draftPath, 'utf8'); } catch { return ''; }
 }
+const draftProject = (text) => /^- Project:[ \t]*(.+)$/m.exec(text)?.[1]?.trim() ?? '';
 
 export function createLinkedInPostingJob({ draftJob, publish, renderMedia = null }) {
   return {
@@ -22,9 +23,10 @@ export function createLinkedInPostingJob({ draftJob, publish, renderMedia = null
       let media;
       let mediaNote = '';
       if (renderMedia) {
-        const topic = await draftProject(result.artifactPath);
+        const draft = await readDraft(result.artifactPath);
+        const topic = draftProject(draft);
         try {
-          const rendered = topic ? await renderMedia({ topic, outBase: result.artifactPath.replace(/\.md$/i, ''), signal: context.signal, report }) : null;
+          const rendered = topic ? await renderMedia({ topic, draft, outBase: result.artifactPath.replace(/\.md$/i, ''), signal: context.signal, report }) : null;
           if (rendered) {
             const kind = mediaKindFor(context.date) === 'image' && rendered.image ? 'image' : 'video';
             media = { kind, path: kind === 'image' ? rendered.image : rendered.video, title: rendered.name };

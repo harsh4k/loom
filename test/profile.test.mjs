@@ -13,7 +13,7 @@ test('an empty profile gets safe defaults and every automation reports what it n
   const empty = normalizeProfile({ timeZone: 'Not/AZone' });
   assert.ok(empty.timeZone && empty.timeZone !== 'Not/AZone');
   assert.ok(empty.linkedin.folder.endsWith('linkedin'));
-  for (const automation of AUTOMATIONS) assert.ok(missingSetup(automation, empty).length > 0, automation.id);
+  for (const automation of AUTOMATIONS.filter((item) => item.needs?.length)) assert.ok(missingSetup(automation, empty).length > 0, automation.id);
   assert.deepEqual(missingSetup(AUTOMATIONS.find((item) => item.id === 'notion-projects')), []);
   assert.throws(() => need('', 'github.user'), /Set github\.user in config\/profile\.json/);
 });

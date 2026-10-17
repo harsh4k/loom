@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -108,3 +108,47 @@ test('skips without keys or the checkbox, and refuses runs that would empty or g
   await assert.rejects(makeJob(dir, world).run({ report: () => {} }), /would remove 4/);
   assert.equal(world.commits.length, 0);
 }));
+
+test('a ticked project without a picture gets one from its live site and words in the site’s voice', async () => tempDir(async (dir) => {
+  const world = fakeWorld([page('Velsaro', { onPortfolio: true, 'Portfolio ID': 'velsaro' }), page('Edith', { onPortfolio: true, Description: 'A local voice assistant', 'Tech Stack': 'Python, Ollama' })]);
+  const images = [];
+  const base = world.fetchImpl;
+  world.fetchImpl = async (url, init = {}) => {
+    if (url.endsWith('/repos/example-dev/edith')) return json(200, { homepage: 'https://edith.example.dev' });
+    if (url.endsWith('/repos/example-dev/edith/readme')) return json(200, { content: Buffer.from('# Edith\nA local voice assistant in Python that talks to Ollama on your own PC.').toString('base64') });
+    if (url.endsWith('/contents/site/public/images/edith.webp') && init.method === 'PUT') { images.push(JSON.parse(init.body)); return json(200, { content: { sha: 'img' }, commit: { sha: 'c0' } }); }
+    return base(url, init);
+  };
+  const shots = [];
+  const run = async (command, args) => {
+    const shot = args.find((arg) => arg.startsWith('--screenshot='));
+    if (shot) { shots.push(args.at(-1)); await writeFile(shot.slice('--screenshot='.length), Buffer.alloc(60 * 1024, 7)); }
+    else await writeFile(args.at(-1), Buffer.alloc(20 * 1024, 9));
+    return { code: 0, output: '' };
+  };
+  const askJson = async () => ({ summary: 'Local voice assistant', role: 'Designed and built it', problem: 'I wanted a voice assistant that runs on my own PC and never sends my voice to a server.', outcome: 'A Python voice assistant that talks to Ollama on my own PC, with nothing sent to the cloud.' });
+  const job = createPortfolioSyncJob({
+    connections: () => ({ token: (provider) => tokens[provider] ?? null, reportProblem: async () => {} }),
+    openLedger: () => openLedger(path.join(dir, 'hub.sqlite')), fetch: world.fetchImpl,
+    cards: { askJson, browserPath: '/chrome', ffmpeg: 'ffmpeg', run, workRoot: path.join(dir, 'work') },
+  });
+  const result = await job.run({ runId: 'r', report: () => {} });
+  assert.match(result.summary, /added Edith/);
+  assert.deepEqual(shots, ['https://edith.example.dev']);
+  assert.equal(images.length, 1);
+  assert.equal(Buffer.from(images[0].content, 'base64').length, 20 * 1024);
+  const added = JSON.parse(world.file.text).at(-1);
+  assert.deepEqual(Object.keys(added), ['id', 'order', 'title', 'code', 'url', 'image', 'summary', 'role', 'stack', 'repo', 'problem', 'outcome']);
+  assert.equal(added.url, 'https://edith.example.dev');
+  assert.equal(added.repo, 'https://github.com/example-dev/edith');
+  assert.equal(added.summary, 'Local voice assistant');
+}));
+
+test('card words that invent facts or sound like marketing are dropped', async () => {
+  const { checkEntry } = await import('../src/portfolio/card.mjs');
+  const source = 'Name: Edith\nREADME: A local voice assistant in Python that talks to Ollama.';
+  const { entry, dropped } = checkEntry({ summary: 'Local voice assistant.', role: 'Built it with Kubernetes', problem: 'A seamless, cutting-edge assistant that leverages local models for everyone.', outcome: 'x' }, source);
+  assert.deepEqual(entry, { summary: 'Local voice assistant' });
+  assert.deepEqual(dropped, ['role', 'problem', 'outcome']);
+  assert.equal(checkEntry({ summary: 'Built on Kubernetes' }, source).entry, null);
+});

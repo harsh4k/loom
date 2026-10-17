@@ -1,0 +1,14 @@
+{
+  "_about": "The studio's scenes (media/studio/assets/engine.js). Each storyboard shot names one scene and fills only its slots, with words taken from the project's own facts.",
+  "monument": { "use": "The project name set huge, cropped by the frame. Opens or closes a film.", "slots": { "name": "the project name, exactly", "line": "optional, up to 12 words saying what it is" } },
+  "statement": { "use": "One sentence set large. A hook, a claim, or the problem.", "slots": { "text": "6 to 14 words" } },
+  "number": { "use": "A real number counted up, with what it means.", "slots": { "value": "one of the project's stats values, exactly", "label": "4 to 12 words saying what the number means" } },
+  "screen": { "use": "A real screenshot of the product opening like a shutter.", "slots": { "image": "shot or readme", "caption": "optional, up to 12 words" } },
+  "split": { "use": "Screenshot on one side, a title and a sentence on the other.", "slots": { "image": "shot or readme", "title": "2 to 6 words", "text": "optional, up to 20 words" } },
+  "terminal": { "use": "A real command typed into a terminal, with its output. Only for projects that have a command.", "slots": { "command": "the project's command, exactly", "lines": "1 to 3 short output lines taken from the facts" } },
+  "list": { "use": "Three or four things it does, each taking the stage in turn.", "slots": { "title": "optional, 2 to 5 words", "items": "3 or 4 items, each 2 to 6 words" } },
+  "stack": { "use": "The tools it is built with, flashed like a type specimen.", "slots": { "items": "3 to 7 names from the stack, exactly", "line": "optional, up to 6 words" } },
+  "field": { "use": "A flat field of colour with a few words: a chapter break.", "slots": { "text": "2 to 6 words" } },
+  "marquee": { "use": "One phrase running past the edges in two rows.", "slots": { "text": "2 to 5 words" } },
+  "end": { "use": "The end card and still image: name, one line, link. Always last.", "slots": { "line": "6 to 16 words" } }
+}
