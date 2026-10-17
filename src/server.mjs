@@ -186,7 +186,7 @@ async function handleLinkedIn(req, res, url, { linkedin, port }) {
   const home = `http://${LOOPBACK}:${port}/`;
   if (pathname === '/api/linkedin') {
     if (req.method !== 'GET') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
-    sendJson(res, 200, linkedin.status());
+    sendJson(res, 200, { ...linkedin.status(), autoPublish: getProfile().linkedin.autoPublish });
     return;
   }
   if (pathname === '/api/linkedin/app' || pathname === '/api/linkedin/disconnect') {
@@ -381,6 +381,34 @@ async function handle(req, res, { store, queue, draftsRoot, port, linkedin, hub 
     const found = await runFile(store, decoded, draftsRoot, extension, limit);
     if (!found) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
     sendMedia(req, res, found, type);
+    return;
+  }
+  // The approval gate: read a draft's review, or approve (publish) or discard it.
+  const reviewMatch = /^\/api\/drafts\/([^/]+)\/(review|approve|discard)$/.exec(pathname);
+  if (reviewMatch) {
+    if (!hub?.review) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
+    let decoded;
+    try { decoded = decodeURIComponent(reviewMatch[1]); } catch { throw new HttpError(404, 'NOT_FOUND', 'Not found.'); }
+    if (!safeId(decoded) || decoded.includes('/')) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
+    const action = reviewMatch[2];
+    if (req.method !== (action === 'review' ? 'GET' : 'POST')) throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
+    if (action !== 'review') { checkOrigin(req, port); await emptyBody(req); }
+    const found = await runFile(store, decoded, draftsRoot, '.md', DRAFT_LIMIT);
+    if (!found) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
+    if (action === 'review') {
+      const record = await hub.review.read(found.file);
+      if (!record) throw new HttpError(404, 'NOT_FOUND', 'This draft has no review.');
+      sendJson(res, 200, { state: record.state, media: record.media ? { kind: record.media.kind } : null, createdAt: record.createdAt ?? null, decidedAt: record.decidedAt ?? null });
+      return;
+    }
+    let outcome;
+    try { outcome = await hub.review[action](found.file); } catch (error) {
+      if (error?.code === 'NO_REVIEW') throw new HttpError(404, 'NOT_FOUND', error.message);
+      if (error?.code === 'ALREADY_DECIDED' || error?.code === 'BUSY') throw new HttpError(409, error.code, error.message);
+      throw new HttpError(502, 'PUBLISH_FAILED', `Not posted: ${String(error?.message ?? 'unexpected error').slice(0, 300)}`);
+    }
+    const record = await hub.review.read(found.file);
+    sendJson(res, 200, { posted: outcome.posted, summary: String(outcome.summary).slice(0, 500), state: record?.state ?? null });
     return;
   }
   const stopMatch = /^\/api\/runs\/([^/]+)\/stop$/.exec(pathname);

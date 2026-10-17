@@ -1,6 +1,8 @@
 // Wraps the draft job: once the local model has written and validated a draft, render the
-// project's video and poster image, then publish the post with one of them attached.
+// project's video and poster image. By default the post then waits for approval in Loom
+// (src/linkedin/review.mjs); it is published straight away only when linkedin.autoPublish is on.
 import { readFile } from 'node:fs/promises';
+import { awaitReview } from '../linkedin/review.mjs';
 
 // Thursday posts carry the still image, every other day the video, so the feed alternates.
 export function mediaKindFor(date) {
@@ -13,7 +15,7 @@ async function readDraft(draftPath) {
 }
 const draftProject = (text) => /^- Project:[ \t]*(.+)$/m.exec(text)?.[1]?.trim() ?? '';
 
-export function createLinkedInPostingJob({ draftJob, publish, renderMedia = null }) {
+export function createLinkedInPostingJob({ draftJob, publish, renderMedia = null, autoPublish = () => false }) {
   return {
     async run(context) {
       const result = await draftJob.run(context);
@@ -38,6 +40,12 @@ export function createLinkedInPostingJob({ draftJob, publish, renderMedia = null
         }
       }
       if (context.signal?.aborted) return { summary: 'Draft saved; stopped before posting.', artifactPath: result.artifactPath };
+
+      if (autoPublish() !== true) {
+        await awaitReview(result.artifactPath, { media });
+        const what = media ? `Draft and ${media.kind}` : 'Draft';
+        return { summary: `${what} ready for your review in Loom. Nothing was posted.${mediaNote}`, artifactPath: result.artifactPath };
+      }
 
       report(media ? `Posting to LinkedIn with the ${media.kind}.` : 'Posting to LinkedIn.');
       let outcome;

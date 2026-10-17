@@ -104,8 +104,11 @@ or a same-day skip, `1` for a failed or stopped run, and `2` for a bad command.
 
 ## LinkedIn posting
 
-Each finished draft is posted to LinkedIn through the official API, with the repo link as the
-first comment. Drafts are written from `story-bank.md` in your LinkedIn folder: one fact per line,
+Each finished draft, with its video or image, waits on the Drafts page until you click
+**Approve and post** (or **Discard**); only then is it posted through the official API, with the
+repo link as the first comment. The review state sits beside the draft as `<draft>.review.json`.
+To post without review, set `"autoPublish": true` under `linkedin` in `config/profile.json` and
+restart Loom. Drafts are written from `story-bank.md` in your LinkedIn folder: one fact per line,
 naming the project it is about. Posting stays off until you connect an account on the LinkedIn posts page:
 
 1. At https://www.linkedin.com/developers/apps create an app (any company page you own works).
@@ -117,6 +120,24 @@ The sign-in lasts 60 days; the page warns a week before it ends. A draft is neve
 twice (`data\linkedin-posted.json` records each one), and a draft that still has a bracket or
 placeholder is saved without posting. If a post attempt loses its connection mid-request the
 draft is not retried, since it may already be live.
+
+## Brand rules and the copy benchmark
+
+`config/brand.json` holds the voice rules, banned phrases, length, hashtag and readability limits.
+The draft script reads it on every run, so editing it changes the next draft; no retraining is
+involved. Bump `version` when you change it, so benchmark results say which rules they used.
+Visual tokens (palettes, type, directions) still live in `media/library/taste`.
+
+The benchmark scores posts against those rules and the Story Bank, and writes a scorecard to
+`data/eval/<time>/scorecard.md` with empty columns for your own ratings:
+
+```powershell
+node scripts/eval-copy.mjs              # score the latest 20 saved drafts (no model needed)
+node scripts/eval-copy.mjs --generate   # one fresh dry-run draft per topic with Qwen, then score
+```
+
+`eval/benchmark.json` picks the topics (empty means all `linkedin.topics`) and runs per topic.
+Dry runs never save a draft or post anything.
 
 ## Notion projects
 

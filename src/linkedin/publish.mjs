@@ -49,7 +49,7 @@ export function createPublisher({ account, ledgerFile, fetch: fetchImpl = fetch,
 
     const key = path.basename(draftPath);
     const ledger = await readLedger(ledgerFile);
-    if (ledger[key]?.state === 'posted') return { posted: false, summary: 'Already posted to LinkedIn.' };
+    if (ledger[key]?.state === 'posted') return { posted: false, alreadyPosted: true, postUrn: ledger[key].postUrn, summary: 'Already posted to LinkedIn.' };
     if (ledger[key]?.state === 'pending') {
       return { posted: false, summary: 'Not posted again: an earlier attempt may have reached LinkedIn. Check your profile.' };
     }

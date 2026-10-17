@@ -11,6 +11,7 @@ import { createWeeklyReportJob } from './jobs/weekly-report.mjs';
 import { createModel } from './model.mjs';
 import { createLinkedInAccount } from './linkedin/account.mjs';
 import { createPublisher } from './linkedin/publish.mjs';
+import { createReviewer } from './linkedin/review.mjs';
 import { createMediaRenderer, findBrowser, projectReadme, runProcess } from './media/render.mjs';
 import { AUTOMATIONS } from './automations.mjs';
 import { backupIfDue, lastBackupAt } from './backup.mjs';
@@ -38,7 +39,8 @@ export const SETTINGS_FILE = 'hub-settings.json';
 export const PROJECT_DETAILS_FILE = 'project-details.json';
 const PRIVATE_FILES = [...SQLITE_FILES, LINKEDIN_ACCOUNT_FILE, LINKEDIN_LEDGER_FILE, CONNECTIONS_FILE, SETTINGS_FILE];
 
-// The draft job, followed by posting to LinkedIn when an account is connected.
+// The draft job, then either a review in Loom (the default) or, with linkedin.autoPublish on,
+// posting straight to LinkedIn when an account is connected.
 export function createLinkedInJobs({ dataDir = DATA_DIR, draftJob = createLinkedInDraftJob(), fetch: fetchImpl = fetch } = {}) {
   const account = createLinkedInAccount({ file: path.join(dataDir, LINKEDIN_ACCOUNT_FILE), redirectUri: LINKEDIN_REDIRECT_URI, fetch: fetchImpl });
   const publish = createPublisher({ account, ledgerFile: path.join(dataDir, LINKEDIN_LEDGER_FILE), fetch: fetchImpl });
@@ -48,7 +50,8 @@ export function createLinkedInJobs({ dataDir = DATA_DIR, draftJob = createLinked
     workRoot: path.join(dataDir, 'media-work'),
     studio: { askJson: createModel(), dataDir, tasteDir: getProfile().design.tasteDir || undefined, readme: projectReadme({ token: githubToken, fetch: fetchImpl }) },
   });
-  return { account, job: createLinkedInPostingJob({ draftJob, publish, renderMedia }) };
+  const autoPublish = () => getProfile().linkedin.autoPublish;
+  return { account, review: createReviewer({ publish }), job: createLinkedInPostingJob({ draftJob, publish, renderMedia, autoPublish }) };
 }
 
 // Every active automation's job, ready for the queue. The CLI and the hub both use this, so a
@@ -80,7 +83,7 @@ export function createHubJobs({
     'portfolio-sync': portfolioSync, 'weekly-report': weeklyReport, 'design-inspo': designInspo,
   }, { automations: AUTOMATIONS, ollama });
   return {
-    jobs, linkedin: linkedin.account, ollama, notionProjects,
+    jobs, linkedin: linkedin.account, review: linkedin.review, ollama, notionProjects,
     undo: { 'notion-page': notionProjects.undo, 'notion-section': projectDetails.undo, 'portfolio-file': portfolioSync.undo },
   };
 }
@@ -142,7 +145,7 @@ export async function startHub({ port = Number(process.env.PORT) || 4173, draftJ
   const ledger = openLedger(dbPath);
   const settings = openSettings(path.join(DATA_DIR, SETTINGS_FILE));
   const connections = createConnections({ file: path.join(DATA_DIR, CONNECTIONS_FILE) });
-  const { jobs, linkedin, ollama, undo } = createHubJobs({ draftJob, ollama: keeper, connections });
+  const { jobs, linkedin, review, ollama, undo } = createHubJobs({ draftJob, ollama: keeper, connections });
   const backupDir = path.join(DATA_DIR, 'backup');
   let queue;
   let app;
@@ -170,7 +173,7 @@ export async function startHub({ port = Number(process.env.PORT) || 4173, draftJ
     };
     app = await createServer({
       store, queue, host: '127.0.0.1', port, linkedin,
-      hub: { jobIds: Object.keys(jobs), settings, connections, ledger, health, retries: scheduler.pendingRetries, undo },
+      hub: { jobIds: Object.keys(jobs), settings, connections, ledger, health, retries: scheduler.pendingRetries, undo, review },
     });
     queue.resume();
     if (schedule) scheduler.start();

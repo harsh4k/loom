@@ -35,6 +35,8 @@ export function normalizeProfile(raw = {}) {
       topics: list(linkedin.topics),
       audience: text(linkedin.audience) || 'software engineering recruiters',
       avoid: list(linkedin.avoid),
+      // Off unless set to exactly true: every post waits for approval in Loom first.
+      autoPublish: linkedin.autoPublish === true,
     },
     // The design-taste library Loom's art director draws on; empty means the default skill folder.
     design: { tasteDir: text(design.tasteDir) },

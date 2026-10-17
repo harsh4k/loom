@@ -15,7 +15,8 @@
     "folder": "",
     "topics": ["Project One", "Project Two"],
     "audience": "software engineering recruiters",
-    "avoid": ["Names that must never appear in a post"]
+    "avoid": ["Names that must never appear in a post"],
+    "autoPublish": false
   },
   "design": { "tasteDir": "" }
 }

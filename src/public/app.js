@@ -117,6 +117,7 @@ let refreshing = false;
 let actionInFlight = '';
 let draft = { runId: '', text: '', state: 'empty' };
 let draftRequest = '';
+let reviewInFlight = '';
 let linkedin = null;
 let editingLinkedInApp = false;
 let health = null;
@@ -349,12 +350,13 @@ function renderLinkedIn(visible) {
   $('#linkedin-connected').hidden = showForm || !linkedin.connected;
   $('#linkedin-redirect').textContent = linkedin.redirectUri;
   if (linkedin.connected) {
-    $('#linkedin-connected-text').textContent = linkedin.name ? `Posting automatically as ${linkedin.name}.` : 'Posting automatically.';
+    const how = linkedin.autoPublish ? 'Posting automatically' : 'Posting after your approval';
+    $('#linkedin-connected-text').textContent = linkedin.name ? `${how} as ${linkedin.name}.` : `${how}.`;
     const expiry = $('#linkedin-expiry');
     const until = formatter({ day: 'numeric', month: 'long' }).format(new Date(linkedin.expiresAt));
     expiry.textContent = linkedin.expiresSoon
       ? `LinkedIn sign-in ends on ${until}. Sign in again before then to keep posting.`
-      : `Each new draft is posted with its repo link as the first comment. Sign-in lasts until ${until}.`;
+      : `${linkedin.autoPublish ? 'Each new draft is posted' : 'Each draft you approve in Drafts is posted'} with its repo link as the first comment. Sign-in lasts until ${until}.`;
     expiry.classList.toggle('is-warning', linkedin.expiresSoon);
   }
 }
@@ -390,7 +392,7 @@ function showLinkedInResult() {
   if (result === 'connected') {
     banner.classList.replace('banner-error', 'banner-success');
     banner.setAttribute('role', 'status');
-    showError(banner, 'LinkedIn is connected. New drafts will be posted automatically.');
+    showError(banner, 'LinkedIn is connected. Approve a draft in Drafts to post it.');
   } else showError(banner, result.slice(0, 300));
   openAutomation('linkedin-draft');
 }
@@ -444,12 +446,13 @@ function renderEvents(target, events, limit) {
 
 function renderDraft(target) {
   // Rebuilding on every poll would restart the video, so only redraw when the draft changes.
-  const key = `${draft.runId}:${draft.state}:${draft.media?.video ? 'v' : ''}${draft.media?.image ? 'i' : ''}`;
+  const key = `${draft.runId}:${draft.state}:${draft.media?.video ? 'v' : ''}${draft.media?.image ? 'i' : ''}:${draft.review?.state ?? ''}:${reviewInFlight}`;
   if (target.dataset.rendered === key) return;
   target.dataset.rendered = key;
   clear(target);
   if (draft.state === 'ready') {
     const base = `/api/drafts/${encodeURIComponent(draft.runId)}`;
+    if (draft.review) target.append(reviewBar(draft.review));
     if (draft.media?.video || draft.media?.image) {
       const frame = node('div', 'draft-media');
       if (draft.media.video) {
@@ -604,6 +607,43 @@ function render() {
   if (currentView === 'changes') renderChanges();
 }
 
+// The approval gate: a draft waiting for review shows Approve and Discard; nothing posts without a click.
+const REVIEW_TEXT = {
+  awaiting: 'Waiting for your approval. Nothing has been posted.',
+  posted: 'Approved and posted to LinkedIn.',
+  discarded: 'Discarded. This draft won’t be posted.',
+};
+function reviewBar(review) {
+  const bar = node('div', 'draft-review');
+  bar.dataset.state = review.state;
+  bar.append(node('p', 'draft-review-text', REVIEW_TEXT[review.state] ?? ''));
+  if (review.state !== 'awaiting') return bar;
+  const approve = node('button', 'button button-primary', reviewInFlight === 'approve' ? 'Posting…' : 'Approve and post');
+  const discard = node('button', 'button button-destructive', 'Discard');
+  for (const [button, action] of [[approve, 'approve'], [discard, 'discard']]) {
+    button.type = 'button';
+    button.disabled = Boolean(reviewInFlight);
+    button.addEventListener('click', () => { void decideDraft(action); });
+  }
+  bar.append(approve, discard);
+  return bar;
+}
+async function decideDraft(action) {
+  if (reviewInFlight || !draft.runId) return;
+  if (action === 'approve' && !window.confirm('Post this draft to LinkedIn now?')) return;
+  const runId = draft.runId;
+  reviewInFlight = action;
+  const show = () => { renderDraft($('#draft-preview-workspace')); renderDraft($('#draft-preview-full')); };
+  show();
+  try {
+    const result = await jsonResponse(await api(`/api/drafts/${encodeURIComponent(runId)}/${action}`, { method: 'POST' }));
+    if (draft.runId === runId && result?.state) draft.review = { ...draft.review, state: result.state };
+    announce(result?.summary || 'Done.');
+  } catch (error) {
+    announce(error.message || 'That didn’t work. Try again.');
+  } finally { reviewInFlight = ''; show(); }
+}
+
 async function loadDraft() {
   const completed = snapshot.recentRuns.find((run) => run.jobId === 'linkedin-draft' && run.state === 'succeeded');
   const show = () => { renderDraft($('#draft-preview-workspace')); renderDraft($('#draft-preview-full')); };
@@ -621,8 +661,11 @@ async function loadDraft() {
     const exists = async (kind) => {
       try { return (await api(`/api/drafts/${encodeURIComponent(completed.runId)}/${kind}`, { method: 'HEAD' })).ok; } catch { return false; }
     };
-    const [video, image] = await Promise.all([exists('video'), exists('image')]);
-    draft = { runId: completed.runId, text, state: 'ready', media: { video, image } };
+    const review = async () => {
+      try { const reply = await api(`/api/drafts/${encodeURIComponent(completed.runId)}/review`); return reply.ok ? await reply.json() : null; } catch { return null; }
+    };
+    const [video, image, reviewed] = await Promise.all([exists('video'), exists('image'), review()]);
+    draft = { runId: completed.runId, text, state: 'ready', media: { video, image }, review: reviewed };
   } catch { draft = { runId: completed.runId, text: '', state: 'error' }; }
   finally { draftRequest = ''; show(); }
 }

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "voice": {
+    "rules": [
+      "Show real shipped work in a natural, simple, professional voice.",
+      "Use a number-first opening only if the number is relevant to this topic and supported by the Story Bank; otherwise start with a concrete statement.",
+      "Keep the post concise when source facts are thin; do not pad it to a target length.",
+      "Use 1-2 sentence paragraphs separated by blank lines.",
+      "Avoid generic AI phrases, stacked three-part lists, \"Stop X, start Y\" framing, and excessive em dashes.",
+      "Do not inflate a technical fact into a broad claim."
+    ],
+    "banned": ["The result?", "Here's what", "proves", "robust"]
+  },
+  "copy": {
+    "minChars": 250,
+    "maxChars": 1300,
+    "targetChars": [600, 900],
+    "maxHashtags": 2,
+    "maxSentencesPerParagraph": 2,
+    "maxAverageSentenceWords": 22,
+    "maxEmDashes": 2
+  }
+}

@@ -226,23 +226,26 @@ test('a failed comment still counts the post as published', async () => {
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('posting job publishes a new draft and reports the outcome', async () => {
+test('with autoPublish on, the posting job publishes a new draft and reports the outcome', async () => {
   const published = [];
   const job = createLinkedInPostingJob({
-    draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: 'X:\\d.md' }) },
+        autoPublish: () => true,
+draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: 'X:\\d.md' }) },
     publish: async (file) => { published.push(file); return { summary: 'Posted to LinkedIn.' }; },
   });
   assert.deepEqual(await job.run({ signal: new AbortController().signal }), { summary: 'Posted to LinkedIn.', artifactPath: 'X:\\d.md' });
   assert.deepEqual(published, ['X:\\d.md']);
 
   const skipped = createLinkedInPostingJob({
-    draftJob: { run: async () => ({ summary: 'A draft already exists for today.', artifactPath: null }) },
+        autoPublish: () => true,
+draftJob: { run: async () => ({ summary: 'A draft already exists for today.', artifactPath: null }) },
     publish: async () => assert.fail('nothing to publish'),
   });
   assert.equal((await skipped.run({})).summary, 'A draft already exists for today.');
 
   const failing = createLinkedInPostingJob({
-    draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: 'X:\\d.md' }) },
+        autoPublish: () => true,
+draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: 'X:\\d.md' }) },
     publish: async () => { throw new Error('LinkedIn post failed (500).'); },
   });
   await assert.rejects(failing.run({}), /Draft saved, but posting failed: LinkedIn post failed/);
@@ -413,7 +416,8 @@ test('posting job renders media for the draft’s project and picks video or ima
     await writeFile(draftPath, DRAFT.replace('- Formula:', '- Project: Bunny OS\n- Formula:'));
     const calls = [];
     const job = createLinkedInPostingJob({
-      draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: draftPath }) },
+            autoPublish: () => true,
+draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: draftPath }) },
       renderMedia: async (options) => { calls.push(options); return { name: 'Bunny OS', video: `${options.outBase}.mp4`, image: `${options.outBase}.png`, note: '' }; },
       publish: async (file, { media }) => { calls.push(media); return { summary: 'Posted to LinkedIn with the image.' }; },
     });
@@ -424,10 +428,37 @@ test('posting job renders media for the draft’s project and picks video or ima
     assert.equal(result.summary, 'Posted to LinkedIn with the image.');
 
     const broken = createLinkedInPostingJob({
-      draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: draftPath }) },
+            autoPublish: () => true,
+draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: draftPath }) },
       renderMedia: async () => { throw new Error('Video render failed.'); },
       publish: async (file, { media }) => { assert.equal(media, undefined); return { summary: 'Posted to LinkedIn.' }; },
     });
     assert.equal((await broken.run({ date: '2026-10-20', signal: new AbortController().signal })).summary, 'Posted to LinkedIn. Media wasn’t made (Video render failed.).');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('by default the posting job waits for approval instead of posting', async () => {
+  const dir = await tempDir();
+  try {
+    const draftPath = path.join(dir, '2026-10-20-bunny.md');
+    await writeFile(draftPath, DRAFT.replace('- Formula:', '- Project: Bunny OS\n- Formula:'));
+    const job = createLinkedInPostingJob({
+      draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: draftPath }) },
+      renderMedia: async ({ outBase }) => ({ name: 'Bunny OS', video: `${outBase}.mp4`, image: `${outBase}.png`, note: '' }),
+      publish: async () => assert.fail('nothing is posted without approval'),
+    });
+    const result = await job.run({ date: '2026-10-20', signal: new AbortController().signal, report: () => {} });
+    assert.equal(result.summary, 'Draft and video ready for your review in Loom. Nothing was posted.');
+    const review = JSON.parse(await readFile(path.join(dir, '2026-10-20-bunny.review.json'), 'utf8'));
+    assert.equal(review.state, 'awaiting');
+    assert.deepEqual(review.media, { kind: 'video', file: '2026-10-20-bunny.mp4', title: 'Bunny OS' });
+
+    // Only exactly true turns posting on.
+    const loose = createLinkedInPostingJob({
+      autoPublish: () => 'yes',
+      draftJob: { run: async () => ({ summary: 'Draft ready.', artifactPath: draftPath }) },
+      publish: async () => assert.fail('a non-boolean setting must not post'),
+    });
+    assert.match((await loose.run({ date: '2026-10-20' })).summary, /ready for your review/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

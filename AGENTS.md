@@ -27,7 +27,7 @@ A Windows automation hub (Notion, GitHub, LinkedIn, portfolio sync) on a local O
 
 ## Boundaries
 
-- LinkedIn posting uses only the official API (`src/linkedin/`), never a browser bot. A draft is posted at most once, per the ledger in `data/linkedin-posted.json`; drafts with brackets or placeholders are never posted.
+- LinkedIn posting uses only the official API (`src/linkedin/`), never a browser bot. A post goes out only after the person clicks Approve on the Drafts page (`src/linkedin/review.mjs`, `<draft>.review.json`), unless `linkedin.autoPublish` is exactly `true` in the profile. A draft is posted at most once, per the ledger in `data/linkedin-posted.json`; drafts with brackets or placeholders are never posted.
 - Bind the hub only to `127.0.0.1` (the LinkedIn sign-in callback alone also accepts `localhost`); do not capture app screens.
 - Outside writes: never delete (archive instead), record each write in the ledger first, never overwrite a field whose current value differs from `ledger.lastWritten` (the user edited it) or is `UNDONE`, and stop a run before writing when it would exceed its change cap.
 - Never put a key in the database, logs, events, API responses or backups.
@@ -41,4 +41,4 @@ A Windows automation hub (Notion, GitHub, LinkedIn, portfolio sync) on a local O
 
 ## Status
 
-Store, queue, server, CLI, the Apple-style dashboard and LinkedIn auto-posting are built and tested. The Windows task runs `src/cli.mjs run linkedin-draft`.
+Store, queue, server, CLI, the Apple-style dashboard and LinkedIn posting with an approval step are built and tested. Voice and copy rules live in `config/brand.json` (read by the draft script and the copy benchmark, `node scripts/eval-copy.mjs`). The Windows task runs `src/cli.mjs run linkedin-draft`.

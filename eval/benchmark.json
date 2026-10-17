@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "about": "Copy benchmark. With --generate, each topic gets fresh dry-run drafts from the real draft script (nothing is saved to the drafts folder or posted). Without it, the drafts already in the drafts folder are scored.",
+  "topics": [],
+  "runsPerTopic": 1,
+  "humanRatings": ["Copy quality (1-5)", "Sounds like me (1-5)", "Would post as is (y/n)"]
+}
