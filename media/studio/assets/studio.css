@@ -55,3 +55,28 @@ body { color: var(--ink); font-family: var(--text); font-weight: var(--text-weig
 /* Lists and catalogues: order shown by position and size, never by numbers. */
 .list-item { display: block; }
 .marquee-row { position: absolute; left: 0; white-space: nowrap; }
+.signal-mark { position: absolute; overflow: hidden; color: var(--accent); }
+.on-field .signal-mark { color: var(--field-ink); }
+.signal-band { position: absolute; display: block; border: 5px solid currentColor; }
+.poster-mark { color: currentColor; }
+.poster-mark .signal-band { border-width: 3px; }
+.kinetic-rule { background: var(--accent); }
+.on-field .kinetic-rule { background: var(--field-ink); }
+.kinetic-shot .display { letter-spacing: -0.055em; }
+.poster-head { display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--m) * 0.36); }
+.poster-kicker { font-size: 40px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 0.45em; }
+.poster-kicker::before { content: ""; width: 0.55em; height: 0.55em; background: var(--accent); flex: none; }
+.on-field .poster-kicker::before { background: var(--field-ink); }
+.poster-name { line-height: 0.9; }
+.poster-line { width: 100%; }
+.poster-head .poster-evidence { color: var(--muted); max-width: 88%; }
+.on-field .poster-head .poster-evidence { color: var(--field-ink); opacity: 0.78; }
+.poster-facts { display: flex; flex-direction: column; gap: 18px; }
+.poster-evidence { border-top: 1px solid currentColor; padding-top: 12px; }
+.poster-head .poster-evidence { border-top: none; padding-top: 0; }
+.poster-body { display: flex; flex-direction: column; }
+.poster-media { position: relative; flex: 1 1 0; min-height: 320px; margin-top: calc(var(--m) * 0.9); }
+.poster-plate { position: absolute; background: var(--accent); border-radius: 22px 0 0 22px; }
+.on-field .poster-plate { background: var(--field-ink); opacity: 0.9; }
+.poster-shot { border-radius: 22px 0 0 22px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35); }
+.poster-foot { opacity: 0.85; }

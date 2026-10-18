@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "voice": {
     "rules": [
       "Show real shipped work in a natural, simple, professional voice.",
@@ -7,17 +7,20 @@
       "Keep the post concise when source facts are thin; do not pad it to a target length.",
       "Use 1-2 sentence paragraphs separated by blank lines.",
       "Avoid generic AI phrases, stacked three-part lists, \"Stop X, start Y\" framing, and excessive em dashes.",
-      "Do not inflate a technical fact into a broad claim."
+      "Do not inflate a technical fact into a broad claim.",
+      "Choose one project-specific detail. Do not list unrelated projects or turn permission lists into claims.",
+      "Vary the angle and sentence shape; a new opening must add a new idea, not merely swap words."
     ],
     "banned": ["The result?", "Here's what", "proves", "robust"]
   },
   "copy": {
-    "minChars": 250,
+    "minChars": 120,
     "maxChars": 1300,
     "targetChars": [600, 900],
     "maxHashtags": 2,
     "maxSentencesPerParagraph": 2,
     "maxAverageSentenceWords": 22,
-    "maxEmDashes": 2
+    "maxEmDashes": 2,
+    "requireQuestionEnding": false
   }
 }

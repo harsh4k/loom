@@ -8,7 +8,7 @@ import { gateProblems, sampleTimes } from '../src/media/produce.mjs';
 import { sizedIndex } from '../src/media/studio.mjs';
 
 const library = loadLibrary({ tasteDir: path.join(import.meta.dirname, 'no-such-dir'), inspoFile: path.join(import.meta.dirname, 'no-such-file.json') });
-const ENGINE = readFileSync(path.resolve(import.meta.dirname, '../media/studio/assets/engine.js'), 'utf8');
+const ENGINE = ['engine.js', 'scenes-type.js', 'scenes-product.js', 'scenes-story.js'].map((file) => readFileSync(path.resolve(import.meta.dirname, '../media/studio/assets', file), 'utf8')).join('\n');
 
 const project = {
   name: 'Bunny OS',

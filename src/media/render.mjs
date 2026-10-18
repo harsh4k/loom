@@ -194,7 +194,7 @@ export function createMediaRenderer({
           return { ...made, note: [made.note, notes.length ? `Pictures: ${notes.join(' and ')}.` : ''].filter(Boolean).join(' ') };
         } catch (error) {
           if (signal?.aborted) throw error;
-          notes.push(`the studio failed (${String(error?.message ?? error).slice(0, 160)})`);
+          throw new Error(`Studio generation failed; no substitute media was approved: ${String(error?.message ?? error).slice(0, 160)}`, { cause: error });
         }
       }
       const variablesFile = path.join(workDir, 'variables.json');

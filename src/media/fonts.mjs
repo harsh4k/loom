@@ -33,24 +33,24 @@ export function parseFaces(css, { source }) {
   blocks.forEach((block, index) => {
     if (source === 'google' && labels[index] && labels[index] !== 'latin') return;
     const family = /font-family:\s*['"]?([^;'"]+)['"]?;/.exec(block)?.[1]?.trim();
-    const weight = /font-weight:\s*(\d{3})/.exec(block)?.[1];
+    const weight = /font-weight:\s*(\d{1,4}(?:\s+\d{1,4})?)\s*;/.exec(block)?.[1]?.replace(/\s+/g, ' ');
     const style = /font-style:\s*(\w+)/.exec(block)?.[1] ?? 'normal';
     let url = /url\(['"]?([^'")]+\.woff2)['"]?\)/.exec(block)?.[1];
     if (!family || !weight || !url) return;
     if (url.startsWith('//')) url = `https:${url}`;
     if (!/^https:\/\//.test(url)) return;
-    faces.push({ family, weight: Number(weight), style, url });
+    faces.push({ family, weight: weight.includes(' ') ? weight : Number(weight), style, url });
   });
   return faces;
 }
 
 export function cssUrl(face) {
   const weights = [...new Set(face.weights)].sort((a, b) => a - b);
-  if (face.source === 'fontshare') return `https://api.fontshare.com/v2/css?f[]=${encodeURIComponent(face.slug ?? safe(face.family))}@${weights.join(',')}${face.italic ? `,${weights.map((w) => `${w}i`).join(',')}` : ''}&display=swap`;
+  if (face.source === 'fontshare') return `https://api.fontshare.com/v2/css?f[]=${encodeURIComponent(face.slug ?? safe(face.family))}@${face.variable ? '1' : weights.join(',')}${face.italic && !face.variable ? `,${weights.map((w) => `${w}i`).join(',')}` : ''}&display=swap`;
   const family = encodeURIComponent(face.family).replace(/%20/g, '+');
   return face.italic
     ? `https://fonts.googleapis.com/css2?family=${family}:ital,wght@${weights.map((w) => `0,${w}`).concat(weights.map((w) => `1,${w}`)).join(';')}&display=swap`
-    : `https://fonts.googleapis.com/css2?family=${family}:wght@${weights.join(';')}&display=swap`;
+    : `https://fonts.googleapis.com/css2?family=${family}:wght@${face.variable ? `${weights[0]}..${weights.at(-1)}` : weights.join(';')}&display=swap`;
 }
 
 // Downloads the faces a type system needs (display and text) into cacheDir. Returns the
@@ -65,18 +65,19 @@ export async function loadTypeFaces(typeSystem, { cacheDir, fetch: fetchImpl = f
   const seen = new Set();
   for (const face of roles) {
     if (!['google', 'fontshare'].includes(face.source) || !Array.isArray(face.weights) || !face.weights.length) return null;
-    const indexFile = path.join(cacheDir, `${safe(face.family)}.${face.source}.json`);
+    const indexFile = path.join(cacheDir, `${safe(face.family)}.${face.source}${face.variable ? '.variable' : ''}.json`);
     let faces = null;
     if (existsSync(indexFile)) { try { faces = JSON.parse(await readFile(indexFile, 'utf8')); } catch { faces = null; } }
     const wanted = face.weights.map(Number);
-    if (!faces || !wanted.every((weight) => faces.some((item) => item.weight === weight && existsSync(path.join(cacheDir, item.file))))) {
+    const covers = (item, weight) => { const range = String(item.weight).split(/\s+/).map(Number); return range.length === 2 ? weight >= range[0] && weight <= range[1] : weight === range[0]; };
+    if (!faces || !wanted.every((weight) => faces.some((item) => covers(item, weight) && existsSync(path.join(cacheDir, item.file))))) {
       const response = await fetchImpl(cssUrl(face), { headers: { 'User-Agent': UA }, signal: signal ?? AbortSignal.timeout(20_000) }).catch(() => null);
       if (!response?.ok) return null;
-      const parsed = parseFaces(await response.text(), face).filter((item) => wanted.includes(item.weight));
-      if (!parsed.length) return null;
+      const parsed = parseFaces(await response.text(), face).filter((item) => wanted.some((weight) => covers(item, weight)));
+      if (!wanted.every((weight) => parsed.some((item) => item.style === 'normal' && covers(item, weight)))) return null;
       faces = [];
       for (const item of parsed) {
-        const file = `${safe(item.family)}-${item.weight}${item.style === 'italic' ? 'i' : ''}.woff2`;
+        const file = `${safe(item.family)}-${String(item.weight).replace(/\s+/g, '-')}${item.style === 'italic' ? 'i' : ''}.woff2`;
         const target = path.join(cacheDir, file);
         if (!existsSync(target)) {
           const fontResponse = await fetchImpl(item.url, { headers: { 'User-Agent': UA }, signal: signal ?? AbortSignal.timeout(30_000) }).catch(() => null);
@@ -91,7 +92,7 @@ export async function loadTypeFaces(typeSystem, { cacheDir, fetch: fetchImpl = f
       await writeFile(indexFile, JSON.stringify(faces));
     }
     for (const item of faces) {
-      if (!wanted.includes(item.weight) || seen.has(item.file)) continue;
+      if (!wanted.some((weight) => covers(item, weight)) || seen.has(item.file)) continue;
       seen.add(item.file);
       files.push({ name: item.file, path: path.join(cacheDir, item.file) });
       rules.push(`@font-face { font-family: "${face.family}"; src: url("fonts/${item.file}") format("woff2"); font-weight: ${item.weight}; font-style: ${item.style}; font-display: block; }`);

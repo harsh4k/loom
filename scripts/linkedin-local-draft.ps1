@@ -1,54 +1,27 @@
 param([switch]$DryRun, [string]$Model = 'qwen3.5:9b-q4_K_M', [string]$Topic = '')
 
 $ErrorActionPreference = 'Stop'
-# Personal settings come from config/profile.json (see config/profile.example.json).
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $hub = Split-Path $PSScriptRoot -Parent
 $profilePath = if ($env:LOOM_PROFILE) { $env:LOOM_PROFILE } else { Join-Path $hub 'config\profile.json' }
-$settings = if (Test-Path -LiteralPath $profilePath -PathType Leaf) { Get-Content -LiteralPath $profilePath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+$settings = Get-Content -LiteralPath $profilePath -Raw -Encoding UTF8 | ConvertFrom-Json
 $project = if ($settings.linkedin.folder) { [string]$settings.linkedin.folder } else { Join-Path $hub 'data\linkedin' }
-$author = if ($settings.name) { [string]$settings.name } else { 'the author' }
-$audience = if ($settings.linkedin.audience) { [string]$settings.linkedin.audience } else { 'software engineering recruiters' }
-$topics = @($settings.linkedin.topics | Where-Object { $_ -and "$_".Trim() } | ForEach-Object { "$_".Trim() })
-$avoid = @($settings.linkedin.avoid | Where-Object { $_ -and "$_".Trim() } | ForEach-Object { "$_".Trim() })
-if (-not $topics.Count) { throw "Add linkedin.topics to $profilePath first." }
-# Voice and copy rules come from config/brand.json, so they can change without touching code.
 $brandPath = if ($env:LOOM_BRAND) { $env:LOOM_BRAND } else { Join-Path $hub 'config\brand.json' }
-if (-not (Test-Path -LiteralPath $brandPath -PathType Leaf)) { throw "Brand file missing: $brandPath" }
 $brand = Get-Content -LiteralPath $brandPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$voiceRules = @($brand.voice.rules | Where-Object { $_ -and "$_".Trim() } | ForEach-Object { "$_".Trim() })
-$banned = @($brand.voice.banned | Where-Object { $_ -and "$_".Trim() } | ForEach-Object { "$_".Trim() })
-$minChars = [int]$brand.copy.minChars
-$maxChars = [int]$brand.copy.maxChars
-$targetChars = @($brand.copy.targetChars)
-$maxHashtags = [int]$brand.copy.maxHashtags
-if ($minChars -lt 1 -or $maxChars -le $minChars -or $targetChars.Count -ne 2 -or $maxHashtags -lt 0) { throw "Brand file copy settings are invalid: $brandPath" }
+$topics = @($settings.linkedin.topics | Where-Object { $_ -and "$_".Trim() })
+if (-not $topics.Count) { throw "Add linkedin.topics to the profile first." }
 $drafts = Join-Path $project 'drafts'
-$storyPath = Join-Path $project 'story-bank.md'
+$storyPath = if ($env:LOOM_COPY_STORY) { $env:LOOM_COPY_STORY } else { Join-Path $project 'story-bank.md' }
 $today = Get-Date -Format 'yyyy-MM-dd'
-
-if (-not (Test-Path -LiteralPath $storyPath -PathType Leaf)) { throw "Story Bank missing: $storyPath" }
-if (-not (Test-Path -LiteralPath $drafts -PathType Container)) { throw "Draft folder missing: $drafts" }
-
+if (-not (Test-Path -LiteralPath $drafts -PathType Container)) { throw 'Draft folder missing.' }
 $existing = @(Get-ChildItem -LiteralPath $drafts -File -Filter '*.md' | Sort-Object Name)
 if (-not $DryRun -and @($existing | Where-Object Name -Like "$today-*.md").Count) {
     Write-Output "A draft already exists for $today. Skipping."
     exit 0
 }
-
-$story = Get-Content -LiteralPath $storyPath -Raw -Encoding UTF8
-$knownOpeners = @()
-$prior = ($existing | ForEach-Object {
-    $sections = (Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8) -split '(?m)^---\s*$', 2
-    $opening = ($sections[-1].Trim() -split "`r?`n")[0].Trim()
-    $knownOpeners += $opening
-    "$($_.BaseName): $opening"
-}) -join "`n"
-# Rotate through topics: an unused one first, otherwise the one whose latest draft is oldest.
-# Draft names start with yyyy-MM-dd, so sorting names sorts by date.
-$selectedTopic = $null
+$selectedTopic = if ($Topic) { $Topic.Trim() } else { $null }
 $oldestUse = $null
-# -Topic picks the project directly (the benchmark uses it); otherwise topics rotate.
-if ($Topic) { $selectedTopic = $Topic.Trim() }
 foreach ($candidate in $(if ($selectedTopic) { @() } else { $topics })) {
     $slugPattern = [regex]::Escape(($candidate.ToLowerInvariant() -replace '\s+', '-'))
     $projectLine = "- Project: $candidate"
@@ -58,71 +31,46 @@ foreach ($candidate in $(if ($selectedTopic) { @() } else { $topics })) {
     if (-not $lastUse) { $selectedTopic = $candidate; break }
     if ($null -eq $oldestUse -or [string]::CompareOrdinal($lastUse, $oldestUse) -lt 0) { $oldestUse = $lastUse; $selectedTopic = $candidate }
 }
-$facts = (($story -split "`r?`n") | Where-Object { $_ -match [regex]::Escape($selectedTopic) }) -join "`n"
-if (-not $facts) { throw "No Story Bank facts found for $selectedTopic" }
-$repo = [regex]::Match($facts, 'github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+').Value
-# Links never go in the post body (the repo link is the first comment), so the model never sees
-# them and any it still writes are taken out before the checks.
-$linkPattern = '(?i)\(?\b(?:https?://|www\.|github\.com/)\S+'
-function Remove-Links([string]$text) {
-    $clean = [regex]::Replace($text, $linkPattern, '')
-    $clean = [regex]::Replace($clean, '\(\s*\)|[ \t]+(?=[.,;:!?])', '')
-    return [regex]::Replace($clean, '[ \t]{2,}', ' ')
+$history = @($existing | ForEach-Object { @{ markdown = [string](Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8) } })
+$stage = Join-Path $PSScriptRoot 'copy-stage.mjs'
+function Invoke-CopyStage($request) {
+    $json = $request | ConvertTo-Json -Depth 20 -Compress
+    $answer = $json | & node $stage
+    if ($LASTEXITCODE -ne 0) { throw "Copy stage failed: $answer" }
+    return ($answer | ConvertFrom-Json)
 }
-$factsForModel = Remove-Links $facts
-
-$avoidRule = if ($avoid.Count) { " Never mention any of these: $($avoid -join ', ')." } else { '' }
-$bannedRule = if ($banned.Count) { " Never use these words or phrases: $(($banned | ForEach-Object { '"' + $_ + '"' }) -join ', ')." } else { '' }
-$system = @"
-You write one LinkedIn draft for $author. Return only a JSON object with string fields: topic, formula, post. Never claim the post was published or scheduled. The supplied Story Bank lines are the only source of facts. Every factual sentence must be directly supported by those lines. Never invent numbers, dates, names, outcomes, feelings, module responsibilities, latency, or first-person experiences. Local inference and zero cloud APIs do not prove that the entire app has no external connectivity. The post is published as written, so it must be complete: never use placeholders, blanks, square brackets, or notes to the author. When a personal detail is missing, leave it out and write only what the facts support. Choose a topic or angle different from the existing drafts.
-
-The audience is $audience. $($voiceRules -join ' ') Never start with a question. End with a specific technical question, not a hiring appeal, and then at most $maxHashtags hashtags. Never put a repository link in the post body; the runner handles the first comment.$bannedRule Do not infer what $author thought, felt, learned or wanted; omit missing personal context. Do not name freelance clients or teammates. Do not include phone numbers or email addresses.$avoidRule Formula is a short hook label, not instructions or an engagement claim.
-"@
-$user = "Write a post ONLY about $selectedTopic, around $($targetChars[0])-$($targetChars[1]) characters. Use only the exact facts below. Leave out any personal moment or engineering challenge the facts do not state, rather than filling with assumptions or placeholders. NEVER repeat an existing opening line. STORY BANK FACTS FOR THIS TOPIC:`n$factsForModel`n`nPAST DRAFTS AND OPENERS:`n$prior"
-$issue = ''
+$prepared = Invoke-CopyStage @{ action='prepare'; topic=$selectedTopic; storyBank=[string](Get-Content -LiteralPath $storyPath -Raw -Encoding UTF8); profile=$settings; brand=$brand; history=$history }
+$repo = @($prepared.records | Where-Object { $_.repo } | ForEach-Object { $_.repo }) | Select-Object -First 1
+$feedback = ''
+$attempts = @()
 for ($attempt = 1; $attempt -le 3; $attempt++) {
-    $body = @{
-        model = $Model
-        messages = @(@{role='system'; content=$system}, @{role='user'; content=($user + "`n$issue")})
-        format = 'json'
-        stream = $false
-        think = $false
-        options = @{num_ctx=8192; num_predict=1400; temperature=0.7}
-    } | ConvertTo-Json -Depth 8 -Compress
+    $post = ''
+    $prompt = $prepared.prompt + "`nWrite only a JSON object with string topic, formula, post. Write ONLY about $selectedTopic. $feedback"
+    $body = @{ model=$Model; messages=@(@{role='system'; content=$prepared.system}, @{role='user'; content=$prompt}); format='json'; stream=$false; think=$false; options=@{num_ctx=8192;num_predict=1400;temperature=0.7} } | ConvertTo-Json -Depth 12 -Compress
+    $raw = $null
     try {
-        $response = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/chat' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 600
+        $response = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/chat' -Method Post -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 600
+        $raw = $response.message.content
         if ($response.done_reason -ne 'stop') { throw "Model response incomplete: $($response.done_reason)" }
-        $result = $response.message.content | ConvertFrom-Json
-        foreach ($field in @('topic','formula','post')) {
-            if (-not ($result.$field -is [string])) { throw "Model response missing $field" }
-        }
-        $post = (Remove-Links $result.post).Trim()
-        $firstLine = ($post -split "`r?`n")[0].Trim()
-        if ($post.Length -lt $minChars -or $post.Length -gt $maxChars) { throw "Draft length $($post.Length) is outside $minChars-$maxChars characters" }
-        if ($firstLine -match '\?$') { throw 'Draft opens with a question' }
-        if ($post -notmatch [regex]::Escape($selectedTopic)) { throw "Draft does not focus on $selectedTopic" }
-        $openerKey = $firstLine.ToLowerInvariant() -replace '[^a-z0-9]', ''
-        foreach ($old in $knownOpeners) {
-            if (($old.ToLowerInvariant() -replace '[^a-z0-9]', '') -eq $openerKey) { throw 'Draft reuses an existing opener' }
-        }
-        if ($post -match '(?i)https?://|www\.|github\.com/') { throw 'Draft body contains a link' }
-        if ($post -match '[\[\]{}]|(?i)\bSLOT\b|\bTODO\b|\bTBD\b') { throw 'Draft contains a placeholder or bracket; it must be complete and publishable' }
-        if ($avoid.Count -and $post -match ('(?i)' + (($avoid | ForEach-Object { [regex]::Escape($_) }) -join '|'))) { throw 'Draft contains an off-limits name' }
-        if ($post -notmatch ('\?\s*(?:#[\w-]+\s*){0,' + $maxHashtags + '}$')) { throw "Draft must end with a question and at most $maxHashtags hashtags" }
-        foreach ($phrase in $banned) {
-            if ($post -match ('(?i)(?<![\w])' + [regex]::Escape($phrase) + '(?![\w])')) { throw "Draft uses a banned phrase: $phrase" }
-        }
-        $storyNumbers = $facts -replace '(?<=\d),(?=\d)', ''
-        foreach ($number in [regex]::Matches($post, '\b\d[\d,]*(?:\.\d+)*\b')) {
-            if (-not $storyNumbers.Contains($number.Value.Replace(',', ''))) { throw "Draft uses a number absent from the Story Bank: $($number.Value)" }
-        }
+        $result = $raw | ConvertFrom-Json
+        foreach ($field in @('topic','formula','post')) { if (-not ($result.$field -is [string])) { throw "Model response missing $field" } }
+        $post = $result.post.Trim()
+        $checked = Invoke-CopyStage @{ action='validate'; post=$post; topic=$selectedTopic; records=@($prepared.records); history=@($prepared.history); brand=$brand; avoid=@($settings.linkedin.avoid); topics=@($settings.linkedin.topics) }
+        if (-not $checked.valid) { throw ($checked.errors -join '; ') }
+        $attempts += @{ attempt=$attempt; prompt=$prompt; raw=$raw; errors=@() }
         break
     } catch {
-        $issue = "`nRevise your prior draft below. It failed: $($_.Exception.Message). Focus ONLY on $selectedTopic. Use only supplied facts, leave out anything not supported, use no brackets or placeholders, and keep it concise. Return all three JSON fields again.`nPRIOR DRAFT:`n$post"
-        if ($attempt -eq 3) { throw "Draft failed validation after 3 attempts: $($_.Exception.Message); length=$($post.Length); opener=$firstLine" }
+        $message = $_.Exception.Message
+        $attempts += @{ attempt=$attempt; prompt=$prompt; raw=$raw; errors=@($message) }
+        # Supply the failing rule, never repeat the rejected wording as an anchor.
+        $feedback = "Choose a fresh approach and correct these failures: $message"
+        if ($attempt -eq 3) {
+            if ($env:LOOM_COPY_ATTEMPTS) { ConvertTo-Json -InputObject @($attempts) -Depth 20 | Set-Content -LiteralPath $env:LOOM_COPY_ATTEMPTS -Encoding UTF8 }
+            throw "Draft failed validation after 3 attempts: $message"
+        }
     }
 }
-
+if ($env:LOOM_COPY_ATTEMPTS) { ConvertTo-Json -InputObject @($attempts) -Depth 20 | Set-Content -LiteralPath $env:LOOM_COPY_ATTEMPTS -Encoding UTF8 }
 $slug = ($result.topic.ToLowerInvariant() -replace '[^a-z0-9]+','-').Trim('-')
 if ($slug.Length -gt 48) { $slug = $slug.Substring(0,48).Trim('-') }
 if (-not $slug) { $slug = 'post' }
@@ -130,13 +78,6 @@ $target = Join-Path $drafts "$today-$slug.md"
 if (Test-Path -LiteralPath $target) { throw "Draft already exists: $target" }
 $title = $result.topic.Trim() -replace '[\r\n]',' '
 $formula = $result.formula.Trim() -replace '[\r\n]',' '
-$comment = $repo
-$markdown = "# Draft: $title`n`n- Project: $selectedTopic`n- Skill: local Ollama draft`n- Formula: $formula`n- Goal: recruiter visibility`n- Status: Complete; Loom posts it to LinkedIn after you approve it`n- Suggested window: Tue/Thu, 7:30-9:00 AM`n- First comment: $comment`n`n---`n`n$post`n"
-
-if ($DryRun) {
-    Write-Output "DRY RUN: Would write $target"
-    Write-Output $markdown
-} else {
-    $markdown | Set-Content -LiteralPath $target -Encoding UTF8 -NoNewline
-    Write-Output "Wrote draft: $target"
-}
+$markdown = "# Draft: $title`n`n- Project: $selectedTopic`n- Skill: local Ollama draft`n- Formula: $formula`n- Goal: recruiter visibility`n- Status: Complete; Loom posts it to LinkedIn after you approve it`n- First comment: $repo`n`n---`n`n$post`n"
+if ($DryRun) { Write-Output "DRY RUN: Would write $target"; Write-Output $markdown }
+else { $markdown | Set-Content -LiteralPath $target -Encoding UTF8 -NoNewline; Write-Output "Wrote draft: $target" }

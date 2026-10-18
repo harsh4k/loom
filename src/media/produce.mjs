@@ -4,6 +4,10 @@
 // 3. A quality gate: HyperFrames' layout and contrast check, then Qwen looks at the frames.
 //    A rejected storyboard is rewritten with the reasons, up to three times, then a safe one is used.
 // 4. Renders: the 16:9 video (posted), 4:5 and 9:16 cuts, and a 4:5 poster image.
+import { createInspector, gateProblems, qualityVerdict } from './quality.mjs';
+export { gateProblems, qualityVerdict } from './quality.mjs';
+import { LOOK_VERSION } from './art-direction.mjs';
+import { evidenceMap } from './claims.mjs';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -14,7 +18,6 @@ import { loadLibrary } from './library.mjs';
 import { filmDuration, prepareStudio } from './studio.mjs';
 
 const ATTEMPTS = 3;
-const PASS_SCORE = 6;
 const HISTORY = 6;
 export const CUTS = Object.freeze([
   { format: 'landscape', suffix: '' },
@@ -46,25 +49,6 @@ export function sampleTimes(shots) {
   return times;
 }
 
-const LAYOUT_FAULTS = new Set(['clipped_text', 'text_box_overflow', 'content_overlap', 'text_occluded', 'text_not_painted']);
-
-// The findings in a HyperFrames check report that make a film not worth posting.
-export function gateProblems(report) {
-  if (!report || typeof report !== 'object') return [];
-  const problems = [];
-  for (const section of ['lint', 'runtime', 'layout', 'contrast']) {
-    for (const finding of report[section]?.findings ?? []) {
-      const serious = finding.severity === 'error' || (finding.severity === 'warning' && ['layout', 'contrast'].includes(section));
-      // Layout findings that mean broken text. Masked words outside their line, a name that
-      // bleeds off the frame or a marquee running past the edge are the design, so they pass.
-      if (!serious || (section === 'layout' && !LAYOUT_FAULTS.has(finding.code))) continue;
-      const at = Number.isFinite(finding.time) ? ` at ${Number(finding.time).toFixed(1)}s` : '';
-      problems.push(`${String(finding.message ?? finding.code).slice(0, 120)}${at}`);
-    }
-  }
-  return [...new Set(problems)].slice(0, 6);
-}
-
 export function createStudio({
   askJson, dataDir, hyperframesBin, browserPath, run, author = '',
   tasteDir, libraryDir, inspoFile, fetch: fetchImpl = fetch, renderTimeoutMs = 15 * 60 * 1000,
@@ -80,7 +64,7 @@ export function createStudio({
   async function lookFor(project, { library, facts, hasPicture, signal, report }) {
     const looks = await readJson(looksFile, {});
     const kept = looks[project.name];
-    const usable = kept && library.grammars[kept.direction] && library.palettes.some((p) => p.id === kept.paletteId) && kept.typeIds?.some((id) => library.types.some((t) => t.id === id));
+    const usable = kept?.version === LOOK_VERSION && library.grammars[kept.direction] && library.palettes.some((p) => p.id === kept.paletteId) && kept.typeIds?.some((id) => library.types.some((t) => t.id === id));
     if (usable) return kept;
     report(`Art-directing ${project.name}.`);
     const look = await artDirect({ project, facts, library, looks, askJson, hasPicture, signal });
@@ -98,32 +82,7 @@ export function createStudio({
     return { system: null, fonts: null };
   }
 
-  // Lays the film out at 16:9, runs the layout check, and lets Qwen look at the frames.
-  async function inspect({ film, images, fonts, workDir, signal }) {
-    await rm(workDir, { recursive: true, force: true });
-    await prepareStudio({ workDir, film, format: 'landscape', images, fonts });
-    await hf(['check', workDir, '--json', '--samples', '10'], signal).catch((error) => { if (signal?.aborted) throw error; });
-    const checks = path.join(workDir, '.hyperframes', 'artifacts', 'checks');
-    const reports = existsSync(checks) ? (await readdir(checks)).filter((name) => name.endsWith('.json')) : [];
-    const problems = reports.length ? gateProblems(await readJson(path.join(checks, reports[0]), null)) : [];
-    if (problems.length) return { problems, score: null };
-
-    const framesDir = path.join(workDir, 'frames');
-    await hf(['snapshot', workDir, '--at', sampleTimes(film.shots).join(','), '--no-end', '--describe', 'false', '-o', framesDir], signal).catch((error) => { if (signal?.aborted) throw error; });
-    const sheet = path.join(framesDir, 'contact-sheet.jpg');
-    if (!existsSync(sheet)) return { problems: [], score: null };
-    const verdict = await askJson({
-      system: 'You are a strict design lead reviewing motion design frames. Answer only with the requested JSON.',
-      prompt: CRITIQUE_PROMPT,
-      schema: CRITIQUE_SCHEMA,
-      images: [(await readFile(sheet)).toString('base64')],
-      temperature: 0.1,
-      signal,
-    }).catch((error) => { if (signal?.aborted) throw error; return null; });
-    const score = Number.isInteger(verdict?.score) ? verdict.score : null;
-    const seen = (verdict?.problems ?? []).map((p) => String(p).slice(0, 120)).filter(Boolean);
-    return { problems: score !== null && score < PASS_SCORE ? seen : [], score, seen };
-  }
+  const inspect = createInspector({ hf, askJson });
 
   async function renderCut({ film, format, images, fonts, workDir, output, signal }) {
     await rm(workDir, { recursive: true, force: true });
@@ -160,7 +119,16 @@ export function createStudio({
     const histories = await readJson(historyFile, {});
     const history = Array.isArray(histories[project.name]) ? histories[project.name] : [];
     const workDir = path.join(workRoot, randomUUID());
+    const qualityDir = `${outBase}.quality`;
+    await mkdir(qualityDir, { recursive: true });
     const notes = [];
+    let manifest = null;
+    const persist = async () => {
+      if (!manifest) return;
+      const checks = [...Object.values(manifest.quality.formats), ...Object.values(manifest.quality.renders)];
+      manifest.quality.status = checks.some((item) => item.status === 'FAIL') ? 'FAIL' : checks.some((item) => item.status === 'UNVERIFIED') ? 'UNVERIFIED' : 'PASS';
+      await writeFile(path.join(qualityDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    };
     try {
       let shots = null;
       let feedback = '';
@@ -170,10 +138,10 @@ export function createStudio({
         const written = await writeStoryboard({ project, facts, look, library, images, author, askJson: (args) => askJson({ ...args, temperature: 0.7 }), history, feedback, signal })
           .catch((error) => { if (signal?.aborted) throw error; return { shots: null, problems: ['Qwen did not answer'] }; });
         if (!written.shots) { feedback = written.problems.slice(-4).join('; '); report(`Draft ${attempt} rejected: ${feedback}.`); continue; }
-        report(`Checking the ${project.name} film frame by frame.`);
+        report(`Checking the ${project.name} landscape layout and sampled frames.`);
         const film = filmFor({ look, library, shots: written.shots, typeSystem: system, displaySettings });
-        verdict = await inspect({ film, images, fonts, workDir: path.join(workDir, 'check'), signal });
-        if (verdict.problems.length) { feedback = verdict.problems.slice(0, 3).join('; '); report(`Draft ${attempt} looked wrong${verdict.score ? ` (${verdict.score}/10)` : ''}: ${feedback}.`); continue; }
+        verdict = await inspect({ film, format: 'landscape', images, fonts, workDir: path.join(workDir, `check-${attempt}`), reportDir: path.join(qualityDir, `attempt-${attempt}`), signal });
+        if (verdict.status === 'FAIL') { feedback = verdict.problems.slice(0, 3).join('; '); report(`Draft ${attempt} looked wrong${verdict.score ? ` (${verdict.score}/10)` : ''}: ${feedback}.`); continue; }
         shots = written.shots;
       }
       const usedFallback = !shots;
@@ -183,12 +151,29 @@ export function createStudio({
       }
 
       const film = filmFor({ look, library, shots, typeSystem: system, displaySettings });
+      const formats = {};
+      for (const format of ['landscape', 'portrait', 'story', 'poster']) {
+        const checkedFilm = format === 'poster' ? { ...film, shots: posterShots({ look, library, shots }) } : film;
+        formats[format] = format === 'landscape' && !usedFallback && verdict ? verdict : await inspect({ film: checkedFilm, format, images, fonts, workDir: path.join(workDir, `inspect-${format}`), reportDir: path.join(qualityDir, format), signal });
+      }
+      const quality = {
+        status: Object.values(formats).some((item) => item.status === 'FAIL') ? 'FAIL' : Object.values(formats).some((item) => item.status === 'UNVERIFIED') ? 'UNVERIFIED' : 'PASS',
+        scope: 'Layout and sampled visual frames; not semantic correctness or motion playback', formats,
+        renders: Object.fromEntries(['landscape', 'portrait', 'story', 'poster'].map((format) => [format, { status: 'UNVERIFIED', reason: 'Render not completed' }])),
+        motion: { status: 'UNVERIFIED', reason: 'Review actual playback for pacing and transition continuity.' },
+        usedFallback, reportDir: qualityDir,
+        grounding: { status: 'REVIEW_REQUIRED', reason: 'Source traceability and lexical checks do not prove semantic entailment.', sources: facts.records, shots: evidenceMap(shots, facts.records) },
+      };
+      manifest = { quality, look, film, fonts: system?.id ?? 'system' };
+      await persist();
       const cuts = {};
       for (const { format, suffix } of CUTS) {
         report(`Rendering the ${project.name} ${format === 'landscape' ? '16:9 video' : `${format} cut`}.`);
         try {
           cuts[format] = await renderCut({ film, format, images, fonts, workDir: path.join(workDir, format), output: `${outBase}${suffix}.mp4`, signal });
+          quality.renders[format] = { status: 'PASS', output: cuts[format] };
         } catch (error) {
+          quality.renders[format] = { status: 'FAIL', reason: error.message };
           if (signal?.aborted || format === 'landscape') throw error;
           notes.push(error.message);
         }
@@ -198,22 +183,28 @@ export function createStudio({
       try {
         const poster = { ...film, shots: posterShots({ look, library, shots }) };
         image = await renderPoster({ film: poster, images, fonts, workDir: path.join(workDir, 'poster'), output: `${outBase}.png`, signal });
+        quality.renders.poster = { status: 'PASS', output: image };
       } catch (error) {
+        quality.renders.poster = { status: 'FAIL', reason: error.message };
         if (signal?.aborted) throw error;
         notes.push(error.message);
       }
 
       // Only Qwen's own films are remembered; the plain fallback would make every later draft look like a repeat.
-      if (!usedFallback) await writeJson(historyFile, { ...(await readJson(historyFile, {})), [project.name]: [...history, shots].slice(-HISTORY) });
+      await persist();
+      if (quality.status !== 'PASS') notes.push(`visual quality ${quality.status}; inspect ${qualityDir}`);
+      if (!usedFallback && quality.status === 'PASS') await writeJson(historyFile, { ...(await readJson(historyFile, {})), [project.name]: [...history, shots].slice(-HISTORY) });
       return {
         name: project.name,
         video: cuts.landscape,
         image,
         cuts,
+        quality,
         look: { direction: look.direction, palette: look.paletteId, type: system?.id ?? 'system', motion: look.motionId, poster: look.posterId, score: verdict?.score ?? null },
         note: notes.length ? `Studio: ${notes.join('; ')}.` : '',
       };
     } finally {
+      await persist();
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
   };
