@@ -223,3 +223,7 @@ never edits it afterwards.
 - Notion and GitHub keys: `data\connections.json`; on/off switches: `data\hub-settings.json`. Both are readable only by your Windows user.
 - LinkedIn drafts: `drafts\` in your LinkedIn folder (`data\linkedin\drafts` by default).
 - LinkedIn app keys and sign-in: `data\linkedin.json`, readable only by your Windows user.
+
+## License
+
+The original Loom application source code is MIT licensed. Bundled fonts, media, and third-party dependencies retain their respective licenses. See [LICENSE](LICENSE).
