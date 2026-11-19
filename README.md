@@ -13,7 +13,7 @@ the model pulled (`ollama pull qwen3.5:9b-q4_K_M`).
 1. Clone the repo and copy the example settings:
 
    ```powershell
-   git clone https://github.com/<you>/loom.git
+   git clone https://github.com/harsh4k/loom.git
    cd loom
    copy config\profile.example.json config\profile.json
    copy config\projects.example.json config\projects.json
