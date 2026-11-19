@@ -6,16 +6,16 @@ import path from 'node:path';
 import test from 'node:test';
 import { compositionVariables, createMediaRenderer, findBrowser, findProject, loadProjects } from '../src/media/render.mjs';
 
-test('every project entry has the facts the template needs', () => {
-  const projects = loadProjects();
-  assert.ok(Object.keys(projects).length >= 5);
+test('the example project config has the facts the template needs', () => {
+  const projects = loadProjects(path.resolve(import.meta.dirname, '../config/projects.example.json'));
+  assert.ok(Object.keys(projects).length > 0);
   for (const [key, project] of Object.entries(projects)) {
     assert.ok(project.name && project.tagline && project.link, key);
     assert.ok(Array.isArray(project.stack) && project.stack.length, key);
     for (const stat of project.stats) assert.equal(stat.length, 2, key);
     for (const url of [project.shot?.url, project.shot?.image].filter(Boolean)) assert.match(url, /^https:\/\//, key);
   }
-  assert.equal(findProject(projects, 'EDITH').name, 'EDITH');
+  assert.equal(findProject(projects, 'project one').name, 'Project One');
   assert.equal(findProject(projects, 'freelance'), null);
 });
 

@@ -1,0 +1,5 @@
+{
+  "checks": [
+    { "name": "hub tests", "run": ["npm", "test", "--", "--test-concurrency=2"] }
+  ]
+}

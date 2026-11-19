@@ -15,7 +15,8 @@ desktop/hub-root.json
 renders/
 
 # Local agent notes and personal planning docs
-.agent/
+.agent/*
+!.agent/checks.json
 docs/superpowers/
 docs/full-app-plan.md
 
